@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:desktop_multi_window/desktop_multi_window.dart' as dmw;
 import 'package:flutter/material.dart';
 import 'package:just_audio_media_kit/just_audio_media_kit.dart';
@@ -25,6 +27,7 @@ Future<void> main() async {
     } catch (_) {
       // 主窗口或尚未接入多窗口插件时走正常启动。
     }
+    unawaited(DesktopLyricHost.instance.preload());
   }
   runApp(const MeluneBootApp());
 

@@ -103,6 +103,16 @@ final class DesktopLyricHost {
         });
       } catch (_) {}
     }());
+    unawaited(preload());
+  }
+
+  Future<void> preload() async {
+    if (!isDesktopWindow) {
+      return;
+    }
+    try {
+      await _ensure();
+    } catch (_) {}
   }
 
   Future<void> push(DesktopLyricSnapshot snapshot) async {

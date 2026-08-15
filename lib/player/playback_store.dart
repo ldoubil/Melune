@@ -63,7 +63,7 @@ class PlaybackStore extends ChangeNotifier {
   var _preferredQualityId = 0;
   var _selectedQualityId = 0;
   var _desktopLyricOpen = false;
-  var _desktopLyricLocked = true;
+  var _desktopLyricLocked = false;
   String _desktopLyricSig = '';
   final _random = Random();
 

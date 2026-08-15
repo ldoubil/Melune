@@ -42,7 +42,6 @@ class PlaybackBar extends StatelessWidget {
         store.selectedQualityId,
         store.playlistOpen,
         store.desktopLyricOpen,
-        store.desktopLyricLocked,
       ),
       builder: (context, store) {
         return Padding(
@@ -272,7 +271,7 @@ class _Extras extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         AudioQualityButton(player: player),
-        if (!compact && isDesktopWindow) ...[
+        if (!compact && isDesktopWindow)
           IconButton(
             key: const Key('playback-desktop-lyric'),
             tooltip: player.desktopLyricOpen ? '关闭桌面歌词' : '桌面歌词',
@@ -287,22 +286,6 @@ class _Extras extends StatelessWidget {
                   : context.tokens.colorBase,
             ),
           ),
-          if (player.desktopLyricOpen)
-            IconButton(
-              key: const Key('playback-desktop-lyric-lock'),
-              tooltip: player.desktopLyricLocked ? '解锁桌面歌词（可拖动）' : '锁定桌面歌词（点穿）',
-              visualDensity: VisualDensity.compact,
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints.tightFor(width: 32, height: 32),
-              onPressed: player.toggleDesktopLyricLock,
-              icon: Icon(
-                player.desktopLyricLocked
-                    ? Icons.lock_rounded
-                    : Icons.lock_open_rounded,
-                color: context.tokens.colorBrand,
-              ),
-            ),
-        ],
         IconButton(
           key: const Key('playback-playlist'),
           tooltip: '播放列表',
