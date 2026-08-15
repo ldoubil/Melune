@@ -28,14 +28,12 @@ class MelunePlaybackService : MediaSessionService() {
     override fun onCreate() {
         super.onCreate()
         ensureChannel()
-        setMediaNotificationProvider(
-            DefaultMediaNotificationProvider.Builder(this)
-                .setChannelId(CHANNEL_ID)
-                .setChannelName(R.string.playback_channel_name)
-                .setSmallIcon(R.drawable.ic_stat_melune)
-                .build(),
-        )
-        setShowNotificationForIdlePlayer(SHOW_NOTIFICATION_FOR_IDLE_PLAYER_ALWAYS)
+        val notifications = DefaultMediaNotificationProvider.Builder(this)
+            .setChannelId(CHANNEL_ID)
+            .setChannelName(R.string.playback_channel_name)
+            .build()
+        notifications.setSmallIcon(R.drawable.ic_stat_melune)
+        setMediaNotificationProvider(notifications)
         val player = MeluneMediaHub.player ?: MelunePlayer(applicationContext).also {
             MeluneMediaHub.player = it
         }
