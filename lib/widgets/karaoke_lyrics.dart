@@ -130,7 +130,7 @@ class _KaraokeLyricsState extends State<KaraokeLyrics> {
     if (lines.isEmpty) {
       return Center(
         child: Text(
-          _player.track == null ? '播放歌曲后显示官方歌词' : '暂无官方字幕\n${_player.displayTitle}',
+          _player.track == null ? '播放歌曲后显示歌词' : '暂无歌词\n${_player.displayTitle}',
           textAlign: TextAlign.center,
           style: TextStyle(color: tokens.colorBase, height: 1.5),
         ),

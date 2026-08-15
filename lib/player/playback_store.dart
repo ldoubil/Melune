@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:melune/bili/bili_client.dart';
 import 'package:melune/bili/models.dart';
+import 'package:melune/lyrics/catalog.dart';
 import 'package:melune/player/media_handler.dart';
 import 'package:melune/window/desktop_lyric.dart';
 import 'package:melune/window/window_controller.dart';
@@ -569,7 +570,18 @@ class PlaybackStore extends ChangeNotifier implements MediaSessionHost {
 
   Future<void> _loadLyrics(MeluneTrack current) async {
     try {
-      final lines = await bili.officialLyrics(current.bvid, current.cid);
+      var lines = await bili.officialLyrics(current.bvid, current.cid);
+      if (lines.length < 3) {
+        final title = bili.cleanTitle(current.title);
+        final catalog = await matchCatalogLyrics(
+          title: title.isEmpty ? current.title : title,
+          artist: current.artist,
+          duration: duration > Duration.zero ? duration : current.duration,
+        );
+        if (catalog.length > lines.length) {
+          lines = catalog;
+        }
+      }
       if (track?.id != current.id) {
         return;
       }
@@ -579,7 +591,7 @@ class PlaybackStore extends ChangeNotifier implements MediaSessionHost {
       _pushDesktopLyric(force: true);
       notifyListeners();
     } catch (_) {
-      // 没有官方字幕时保持空列表，界面会提示清洗后的歌名。
+      // 没有可对齐的歌词时保持空列表，界面会提示清洗后的歌名。
     }
   }
 
