@@ -113,6 +113,31 @@ void main() {
     expect(find.byKey(const Key('now-playing-page')), findsNothing);
   });
 
+  testWidgets('system back closes now playing instead of leaving the app', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(400, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      MeluneApp(
+        appName: 'Melune · 洛音',
+        greet: ({required String name}) => '你好，$name',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('playback-now-playing')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('now-playing-page')), findsOneWidget);
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('now-playing-page')), findsNothing);
+    expect(find.byKey(const Key('playback-play')), findsOneWidget);
+  });
+
   testWidgets('switches between navigation destinations', (tester) async {
     tester.view.physicalSize = const Size(400, 800);
     tester.view.devicePixelRatio = 1.0;

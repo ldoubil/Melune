@@ -16,32 +16,10 @@ class NowPlayingGate extends StatefulWidget {
   State<NowPlayingGate> createState() => _NowPlayingGateState();
 }
 
-class _NowPlayingGateState extends State<NowPlayingGate>
-    with SingleTickerProviderStateMixin {
+class _NowPlayingGateState extends State<NowPlayingGate> {
   PlaybackStore? _store;
-  var _open = false;
-  late final AnimationController _controller;
-  late final Animation<Offset> _slide;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 420),
-      reverseDuration: const Duration(milliseconds: 320),
-    );
-    _slide = Tween<Offset>(
-      begin: const Offset(0, 1),
-      end: Offset.zero,
-    ).animate(
-      CurvedAnimation(
-        parent: _controller,
-        curve: Curves.easeOutCubic,
-        reverseCurve: Curves.easeInCubic,
-      ),
-    );
-  }
+  PageRoute<void>? _route;
+  var _pushing = false;
 
   @override
   void didChangeDependencies() {
@@ -50,53 +28,103 @@ class _NowPlayingGateState extends State<NowPlayingGate>
     if (!identical(_store, store)) {
       _store?.removeListener(_onStore);
       _store = store;
-      _syncOpen(store.nowPlayingOpen, animate: false);
       store.addListener(_onStore);
     }
+    _scheduleSync();
   }
 
   @override
   void dispose() {
     _store?.removeListener(_onStore);
-    _controller.dispose();
     super.dispose();
   }
 
   void _onStore() {
-    _syncOpen(_store?.nowPlayingOpen ?? false, animate: true);
+    _scheduleSync();
   }
 
-  void _syncOpen(bool open, {required bool animate}) {
-    if (open == _open) {
+  void _scheduleSync() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _syncRoute();
+      }
+    });
+  }
+
+  void _syncRoute() {
+    if (!mounted) {
       return;
     }
-    _open = open;
-    if (!animate) {
-      _controller.value = open ? 1 : 0;
+    final open = _store?.nowPlayingOpen ?? false;
+    final nav = Navigator.maybeOf(context, rootNavigator: true);
+    if (nav == null) {
       return;
     }
-    if (open) {
-      _controller.forward();
-    } else {
-      _controller.reverse();
+    final active = _route != null && _route!.isActive;
+    if (open && !active && !_pushing) {
+      _pushRoute(nav);
+    } else if (!open && active) {
+      _popRoute(nav);
     }
+  }
+
+  void _pushRoute(NavigatorState nav) {
+    final route = PageRouteBuilder<void>(
+      fullscreenDialog: true,
+      opaque: true,
+      barrierDismissible: false,
+      transitionDuration: const Duration(milliseconds: 420),
+      reverseTransitionDuration: const Duration(milliseconds: 320),
+      pageBuilder: (context, animation, secondaryAnimation) {
+        return const ExcludeSemantics(child: NowPlayingPage());
+      },
+      transitionsBuilder: (context, animation, secondaryAnimation, child) {
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+          reverseCurve: Curves.easeInCubic,
+        );
+        return SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(0, 1),
+            end: Offset.zero,
+          ).animate(curved),
+          child: child,
+        );
+      },
+    );
+    _route = route;
+    _pushing = true;
+    nav.push(route).whenComplete(() {
+      _pushing = false;
+      if (identical(_route, route)) {
+        _route = null;
+      }
+      if (!mounted) {
+        return;
+      }
+      if (_store?.nowPlayingOpen ?? false) {
+        _store!.closeNowPlaying();
+      }
+    });
+  }
+
+  void _popRoute(NavigatorState nav) {
+    final route = _route;
+    if (route == null || !route.isActive) {
+      _route = null;
+      return;
+    }
+    if (route.isCurrent) {
+      nav.pop();
+      return;
+    }
+    nav.removeRoute(route);
   }
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, child) {
-        if (_controller.status == AnimationStatus.dismissed) {
-          return const SizedBox.shrink();
-        }
-        return child!;
-      },
-      child: SlideTransition(
-        position: _slide,
-        child: const ExcludeSemantics(child: NowPlayingPage()),
-      ),
-    );
+    return const SizedBox.shrink();
   }
 }
 

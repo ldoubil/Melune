@@ -71,7 +71,19 @@ class _MeluneShellState extends State<MeluneShell> {
     if (_navKeys[_index].currentState?.pop() == true) {
       return;
     }
-    await SystemNavigator.pop();
+    await _moveToBackground();
+  }
+
+  Future<void> _moveToBackground() async {
+    if (kIsWeb) {
+      return;
+    }
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      try {
+        await const MethodChannel('dev.melune.app').invokeMethod<void>('moveToBackground');
+      } catch (_) {}
+      return;
+    }
   }
 
   void _submitSearch(String value) {

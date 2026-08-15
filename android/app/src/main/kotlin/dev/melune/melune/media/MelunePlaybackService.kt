@@ -41,7 +41,7 @@ class MelunePlaybackService : MediaSessionService() {
         val activity = PendingIntent.getActivity(
             this,
             0,
-            Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
+            launchMain(),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         session = MediaSession.Builder(this, player)
@@ -97,7 +97,7 @@ class MelunePlaybackService : MediaSessionService() {
                 PendingIntent.getActivity(
                     this,
                     0,
-                    Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
+                    launchMain(),
                     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
                 ),
             )
@@ -129,6 +129,18 @@ class MelunePlaybackService : MediaSessionService() {
                 setSound(null, null)
             },
         )
+    }
+
+    private fun launchMain(): Intent {
+        return Intent(this, MainActivity::class.java).apply {
+            action = Intent.ACTION_MAIN
+            addCategory(Intent.CATEGORY_LAUNCHER)
+            addFlags(
+                Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                    Intent.FLAG_ACTIVITY_REORDER_TO_FRONT,
+            )
+        }
     }
 
     companion object {

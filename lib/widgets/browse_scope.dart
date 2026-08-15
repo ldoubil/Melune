@@ -85,26 +85,29 @@ class ContentNavigatorState extends State<ContentNavigator> {
     return BrowseScope(
       openAlbum: _openAlbum,
       openAlbumList: _openAlbumList,
-      child: Navigator(
-        pages: [
-          MaterialPage<void>(
-            key: const ValueKey('content-root'),
-            child: widget.child,
-          ),
-          for (final entry in _stack) entry.page(),
-        ],
-        onDidRemovePage: (page) {
-          if (page.key == const ValueKey('content-root')) {
-            return;
-          }
-          final index = _stack.indexWhere((entry) => entry.key == page.key);
-          if (index < 0) {
-            return;
-          }
-          setState(() {
-            _stack.removeAt(index);
-          });
-        },
+      child: NotificationListener<NavigationNotification>(
+        onNotification: (_) => true,
+        child: Navigator(
+          pages: [
+            MaterialPage<void>(
+              key: const ValueKey('content-root'),
+              child: widget.child,
+            ),
+            for (final entry in _stack) entry.page(),
+          ],
+          onDidRemovePage: (page) {
+            if (page.key == const ValueKey('content-root')) {
+              return;
+            }
+            final index = _stack.indexWhere((entry) => entry.key == page.key);
+            if (index < 0) {
+              return;
+            }
+            setState(() {
+              _stack.removeAt(index);
+            });
+          },
+        ),
       ),
     );
   }
