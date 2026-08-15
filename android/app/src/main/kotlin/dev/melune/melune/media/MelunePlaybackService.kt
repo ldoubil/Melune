@@ -34,6 +34,7 @@ class MelunePlaybackService : MediaSessionService() {
             .build()
         notifications.setSmallIcon(R.drawable.ic_stat_melune)
         setMediaNotificationProvider(notifications)
+        setShowNotificationForIdlePlayer(SHOW_NOTIFICATION_FOR_IDLE_PLAYER_ALWAYS)
         val player = MeluneMediaHub.player ?: MelunePlayer(applicationContext).also {
             MeluneMediaHub.player = it
         }
