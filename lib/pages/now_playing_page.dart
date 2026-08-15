@@ -111,6 +111,7 @@ class _NowPlayingPageState extends State<NowPlayingPage> {
   PlaybackStore? _player;
   var _expanded = false;
   String? _trackId;
+  PageController? _pager;
 
   PlaybackStore get player => _player!;
 
@@ -125,11 +126,13 @@ class _NowPlayingPageState extends State<NowPlayingPage> {
     _player = store;
     _expanded = store.lyricsExpanded;
     _trackId = store.track?.id;
+    _pager ??= PageController(initialPage: store.lyricsExpanded ? 1 : 0);
     store.addListener(_onPlayer);
   }
 
   @override
   void dispose() {
+    _pager?.dispose();
     _player?.removeListener(_onPlayer);
     super.dispose();
   }
@@ -144,6 +147,15 @@ class _NowPlayingPageState extends State<NowPlayingPage> {
       _expanded = expanded;
       _trackId = trackId;
     });
+    final pager = _pager;
+    final target = expanded ? 1 : 0;
+    if (pager != null && pager.hasClients && pager.page?.round() != target) {
+      pager.animateToPage(
+        target,
+        duration: const Duration(milliseconds: 280),
+        curve: Curves.easeOutCubic,
+      );
+    }
   }
 
   @override
@@ -173,9 +185,10 @@ class _NowPlayingPageState extends State<NowPlayingPage> {
     return Material(
       key: const Key('now-playing-page'),
       color: tokens.colorBg,
-      child: Column(
-        children: [
-          _NowPlayingChrome(player: player),
+      child: SafeArea(
+        child: Column(
+          children: [
+            _NowPlayingChrome(player: player),
           Expanded(
             child: wide
                 ? Row(
@@ -198,13 +211,27 @@ class _NowPlayingPageState extends State<NowPlayingPage> {
                 : Column(
                     children: [
                       Expanded(
-                        child: _ArtOrLyrics(player: player, lyrics: _expanded),
+                        child: PageView(
+                          controller: _pager,
+                          physics: const BouncingScrollPhysics(
+                            parent: PageScrollPhysics(),
+                          ),
+                          onPageChanged: (index) {
+                            player.setLyricsExpanded(index == 1);
+                          },
+                          children: [
+                            _CoverAndTitle(player: player),
+                            _LyricsPane(player: player),
+                          ],
+                        ),
                       ),
+                      _PageDots(index: _expanded ? 1 : 0),
                       controls,
                     ],
                   ),
           ),
         ],
+      ),
       ),
     );
   }
@@ -245,67 +272,8 @@ class _NowPlayingChrome extends StatelessWidget {
   }
 }
 
-class _ArtOrLyrics extends StatelessWidget {
-  const _ArtOrLyrics({required this.player, required this.lyrics});
-
-  final PlaybackStore player;
-  final bool lyrics;
-
-  @override
-  Widget build(BuildContext context) {
-    return PlaybackSelect(
-      player: player,
-      selector: (store) => (
-        store.track?.id,
-        store.displayTitle,
-        store.playing,
-        store.lyricsExpanded,
-        store.lyrics.length,
-      ),
-      builder: (context, store) {
-        return AnimatedSwitcher(
-          duration: const Duration(milliseconds: 280),
-          switchInCurve: Curves.easeOutCubic,
-          switchOutCurve: Curves.easeInCubic,
-          layoutBuilder: (currentChild, previousChildren) {
-            return Stack(
-              fit: StackFit.expand,
-              alignment: Alignment.center,
-              children: [
-                ...previousChildren,
-                if (currentChild != null) currentChild,
-              ],
-            );
-          },
-          transitionBuilder: (child, animation) {
-            return FadeTransition(
-              opacity: animation,
-              child: ScaleTransition(
-                scale: Tween<double>(begin: 0.96, end: 1).animate(animation),
-                child: child,
-              ),
-            );
-          },
-          child: lyrics
-              ? GestureDetector(
-                  key: const Key('now-playing-lyrics-pane'),
-                  onTap: store.lyrics.isEmpty
-                      ? store.toggleLyricsExpanded
-                      : null,
-                  child: KaraokeLyrics(player: store),
-                )
-              : _CoverAndTitle(
-                  key: const ValueKey('now-playing-art'),
-                  player: store,
-                ),
-        );
-      },
-    );
-  }
-}
-
 class _CoverAndTitle extends StatelessWidget {
-  const _CoverAndTitle({super.key, required this.player});
+  const _CoverAndTitle({required this.player});
 
   final PlaybackStore player;
 
@@ -316,8 +284,7 @@ class _CoverAndTitle extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final coverSize = (constraints.maxHeight * 0.58).clamp(120.0, 280.0);
-        final wide = MediaQuery.sizeOf(context).width >= 720;
-        final art = Padding(
+        return Padding(
             padding: const EdgeInsets.fromLTRB(28, 8, 28, 12),
             child: Column(
               children: [
@@ -380,15 +347,38 @@ class _CoverAndTitle extends StatelessWidget {
               ],
             ),
           );
-        if (wide) {
-          return art;
-        }
-        return InkWell(
-          key: const Key('now-playing-art'),
-          onTap: player.toggleLyricsExpanded,
-          child: art,
-        );
       },
+    );
+  }
+}
+
+class _PageDots extends StatelessWidget {
+  const _PageDots({required this.index});
+
+  final int index;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          for (var i = 0; i < 2; i++)
+            Container(
+              width: 6,
+              height: 6,
+              margin: const EdgeInsets.symmetric(horizontal: 3),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: i == index
+                    ? tokens.colorBrand
+                    : tokens.colorBase.withValues(alpha: 0.35),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }

@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'package:audio_session/audio_session.dart';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:melune/bili/bili_client.dart';
 import 'package:melune/bili/models.dart';
+import 'package:melune/player/media_handler.dart';
 import 'package:melune/window/desktop_lyric.dart';
 import 'package:melune/window/window_controller.dart';
 
@@ -28,8 +30,10 @@ extension PlaybackModeX on PlaybackMode {
   bool get emphasized => this != PlaybackMode.sequential;
 }
 
-class PlaybackStore extends ChangeNotifier {
-  PlaybackStore({required this.bili}) {
+class PlaybackStore extends ChangeNotifier implements MediaSessionHost {
+  PlaybackStore({required this.bili, this.media, this.windows}) {
+    media?.attach(this);
+    windows?.attach(this);
     attachDesktopLyricHost(
       onClosed: closeDesktopLyricFromOverlay,
       onToggleLike: toggleLike,
@@ -38,13 +42,18 @@ class PlaybackStore extends ChangeNotifier {
   }
 
   final BiliClient bili;
+  final NowPlayingBridge? media;
+  final NowPlayingBridge? windows;
 
   final List<MeluneTrack> _queue = [];
   final List<MeluneLyricLine> _lyrics = [];
   AudioPlayer? _player;
+  AudioSession? _audioSession;
   StreamSubscription<Duration>? _positionSub;
   StreamSubscription<PlayerState>? _stateSub;
   StreamSubscription<Duration?>? _durationSub;
+  StreamSubscription<AudioInterruptionEvent>? _interruptionSub;
+  StreamSubscription<void>? _noisySub;
 
   int _index = 0;
   var _playing = false;
@@ -65,25 +74,41 @@ class PlaybackStore extends ChangeNotifier {
   var _desktopLyricOpen = false;
   var _desktopLyricLocked = false;
   String _desktopLyricSig = '';
+  var _sessionEpoch = 0;
+  var _forceSessionBump = false;
+  String _sessionSig = '';
+  var _ducked = false;
+  var _pausedForFocus = false;
   final _random = Random();
 
+  @override
+  int get sessionEpoch => _sessionEpoch;
+
+  @override
   MeluneTrack? get track => _queue.isEmpty ? null : _queue[_index];
+  @override
   List<MeluneTrack> get queue => List.unmodifiable(_queue);
   List<MeluneLyricLine> get lyrics => List.unmodifiable(_lyrics);
   List<MeluneTrack> get recentTracks => List.unmodifiable(_recent);
   List<MeluneTrack> get likedTracks =>
       List.unmodifiable(_likedTracks.values);
+  @override
   bool get playing => _playing;
+  @override
   bool get loading => _loading;
+  @override
   bool get liked => isLiked(track);
   bool get nowPlayingOpen => _nowPlayingOpen;
   bool get playlistOpen => _playlistOpen;
   bool get lyricsExpanded => _lyricsExpanded;
+  @override
   int get currentIndex => _index;
   PlaybackMode get playbackMode => _mode;
   bool get shuffle => _mode == PlaybackMode.shuffle;
   bool get repeatOne => _mode == PlaybackMode.repeatOne;
+  @override
   Duration get position => _position;
+  @override
   Duration get duration {
     if (_duration > Duration.zero) {
       return _duration;
@@ -109,6 +134,7 @@ class PlaybackStore extends ChangeNotifier {
   bool get desktopLyricOpen => _desktopLyricOpen;
   bool get desktopLyricLocked => _desktopLyricLocked;
 
+  @override
   String get displayTitle {
     final current = track;
     if (current == null) {
@@ -227,6 +253,7 @@ class PlaybackStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  @override
   Future<void> togglePlay() async {
     if (track == null) {
       return;
@@ -239,10 +266,12 @@ class PlaybackStore extends ChangeNotifier {
     if (_playing) {
       await player.pause();
     } else {
+      await _audioSession?.setActive(true);
       await player.play();
     }
   }
 
+  @override
   void toggleLike() {
     toggleLikeTrack(track);
   }
@@ -279,6 +308,7 @@ class PlaybackStore extends ChangeNotifier {
     openPlaylist();
   }
 
+  @override
   void openNowPlaying({bool lyrics = false}) {
     _nowPlayingOpen = true;
     _playlistOpen = false;
@@ -293,7 +323,14 @@ class PlaybackStore extends ChangeNotifier {
   }
 
   void toggleLyricsExpanded() {
-    _lyricsExpanded = !_lyricsExpanded;
+    setLyricsExpanded(!_lyricsExpanded);
+  }
+
+  void setLyricsExpanded(bool value) {
+    if (_lyricsExpanded == value) {
+      return;
+    }
+    _lyricsExpanded = value;
     notifyListeners();
   }
 
@@ -361,17 +398,19 @@ class PlaybackStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  @override
   Future<void> seek(Duration value) async {
     final total = duration.inMilliseconds;
     _position = Duration(milliseconds: value.inMilliseconds.clamp(0, total));
     _pushDesktopLyric();
+    _forceSessionBump = true;
     notifyListeners();
     await _player?.seek(_position);
   }
 
   Future<void> setVolume(double value) async {
     _volume = value.clamp(0.0, 1.0);
-    await _player?.setVolume(_volume);
+    await _applyOutputVolume();
     notifyListeners();
   }
 
@@ -389,6 +428,7 @@ class PlaybackStore extends ChangeNotifier {
     );
   }
 
+  @override
   Future<void> next() async {
     if (_queue.isEmpty) {
       return;
@@ -416,6 +456,7 @@ class PlaybackStore extends ChangeNotifier {
     await next();
   }
 
+  @override
   Future<void> previous() async {
     if (_queue.isEmpty) {
       return;
@@ -432,6 +473,7 @@ class PlaybackStore extends ChangeNotifier {
     await _startCurrent();
   }
 
+  @override
   Future<void> playAt(int index) async {
     if (index < 0 || index >= _queue.length) {
       return;
@@ -503,12 +545,13 @@ class PlaybackStore extends ChangeNotifier {
               'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/125.0.0.0 Mobile Safari/537.36',
         },
       );
-      await player.setVolume(_volume);
+      await _applyOutputVolume();
       if (resumeAt != null && resumeAt > Duration.zero) {
         await player.seek(resumeAt);
         _position = resumeAt;
       }
       if (autoplay) {
+        await _audioSession?.setActive(true);
         await player.play();
       }
       _remember(playable);
@@ -548,13 +591,63 @@ class PlaybackStore extends ChangeNotifier {
     }
   }
 
+  Future<void> _bindAudioFocus() async {
+    if (_audioSession != null) {
+      return;
+    }
+    final session = await AudioSession.instance;
+    await session.configure(const AudioSessionConfiguration.music());
+    _audioSession = session;
+    _interruptionSub = session.interruptionEventStream.listen((event) {
+      unawaited(_onAudioInterruption(event));
+    });
+    _noisySub = session.becomingNoisyEventStream.listen((_) {
+      unawaited(_player?.pause());
+    });
+  }
+
+  Future<void> _onAudioInterruption(AudioInterruptionEvent event) async {
+    if (event.begin) {
+      switch (event.type) {
+        case AudioInterruptionType.duck:
+          _ducked = true;
+          await _applyOutputVolume();
+        case AudioInterruptionType.pause:
+        case AudioInterruptionType.unknown:
+          if (_playing) {
+            _pausedForFocus = true;
+            await _player?.pause();
+          }
+      }
+      return;
+    }
+    switch (event.type) {
+      case AudioInterruptionType.duck:
+        _ducked = false;
+        await _applyOutputVolume();
+      case AudioInterruptionType.pause:
+      case AudioInterruptionType.unknown:
+        if (_pausedForFocus) {
+          _pausedForFocus = false;
+          await _player?.play();
+        }
+    }
+  }
+
+  Future<void> _applyOutputVolume() async {
+    final output = _ducked ? _volume * 0.2 : _volume;
+    await _player?.setVolume(output);
+  }
+
   Future<AudioPlayer> _ensurePlayer() async {
     final existing = _player;
     if (existing != null) {
       return existing;
     }
-    final player = AudioPlayer();
+    await _bindAudioFocus();
+    final player = AudioPlayer(handleInterruptions: false);
     _player = player;
+    await _applyOutputVolume();
     _positionSub = player.positionStream.listen((value) {
       if (value <= Duration.zero &&
           _playing &&
@@ -573,6 +666,9 @@ class PlaybackStore extends ChangeNotifier {
     });
     _stateSub = player.playerStateStream.listen((state) {
       _playing = state.playing;
+      if (state.playing) {
+        unawaited(_audioSession?.setActive(true));
+      }
       if (state.processingState == ProcessingState.completed) {
         unawaited(_advanceFromCompletion());
       }
@@ -608,7 +704,34 @@ class PlaybackStore extends ChangeNotifier {
   }
 
   @override
+  void notifyListeners() {
+    _refreshSessionEpoch();
+    super.notifyListeners();
+    media?.syncFrom(this);
+    windows?.syncFrom(this);
+  }
+
+  void _refreshSessionEpoch() {
+    final sig = [
+      track?.id ?? '',
+      _playing,
+      _loading,
+      liked,
+      duration.inMilliseconds,
+      _index,
+      _queue.map((item) => item.id).join(','),
+    ].join('|');
+    if (_forceSessionBump || sig != _sessionSig) {
+      _sessionSig = sig;
+      _sessionEpoch++;
+      _forceSessionBump = false;
+    }
+  }
+
+  @override
   void dispose() {
+    media?.detach();
+    windows?.detach();
     if (_desktopLyricOpen) {
       _desktopLyricOpen = false;
       _pushDesktopLyric(force: true);
@@ -616,6 +739,8 @@ class PlaybackStore extends ChangeNotifier {
     unawaited(_positionSub?.cancel());
     unawaited(_stateSub?.cancel());
     unawaited(_durationSub?.cancel());
+    unawaited(_interruptionSub?.cancel());
+    unawaited(_noisySub?.cancel());
     unawaited(_player?.dispose());
     super.dispose();
   }

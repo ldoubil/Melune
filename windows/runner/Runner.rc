@@ -53,6 +53,12 @@ END
 // Icon with lowest ID value placed first to ensure application icon
 // remains consistent on all systems.
 IDI_APP_ICON            ICON                    "resources\\app_icon.ico"
+IDI_TB_PREV             ICON                    "resources\\tb_prev.ico"
+IDI_TB_PLAY             ICON                    "resources\\tb_play.ico"
+IDI_TB_PAUSE            ICON                    "resources\\tb_pause.ico"
+IDI_TB_NEXT             ICON                    "resources\\tb_next.ico"
+IDI_TB_LIKE             ICON                    "resources\\tb_like.ico"
+IDI_TB_LIKED            ICON                    "resources\\tb_liked.ico"
 
 
 /////////////////////////////////////////////////////////////////////////////

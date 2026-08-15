@@ -7,7 +7,10 @@ import 'package:melune/accounts/account_store.dart';
 import 'package:melune/app.dart';
 import 'package:melune/bili/cookie_dir.dart';
 import 'package:melune/bili/rust_bili_client.dart';
+import 'package:melune/player/media_handler.dart';
 import 'package:melune/player/playback_store.dart';
+import 'package:melune/player/windows_taskbar_media.dart'
+    if (dart.library.html) 'package:melune/player/windows_taskbar_media_stub.dart';
 import 'package:melune/src/rust/api/simple.dart';
 import 'package:melune/src/rust/frb_generated.dart';
 import 'package:melune/window/desktop_lyric.dart';
@@ -31,10 +34,16 @@ Future<void> main() async {
   }
   runApp(const MeluneBootApp());
 
+  NowPlayingBridge? media;
   try {
     JustAudioMediaKit.ensureInitialized();
   } catch (_) {
     // 测试或缺少 native 库时仍启动界面。
+  }
+  try {
+    media = await bootstrapMediaSession();
+  } catch (err) {
+    debugPrint('媒体会话初始化失败: $err');
   }
 
   try {
@@ -44,7 +53,11 @@ Future<void> main() async {
     await bili.init(await resolveBiliCookieDir());
     final accounts = AccountStore(bili: bili);
     await accounts.refresh();
-    final playback = PlaybackStore(bili: bili);
+    final playback = PlaybackStore(
+      bili: bili,
+      media: media,
+      windows: bootstrapWindowsTaskbar(),
+    );
 
     runApp(
       MeluneApp(

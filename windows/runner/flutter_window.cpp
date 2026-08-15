@@ -4,6 +4,7 @@
 
 #include "flutter/generated_plugin_registrant.h"
 #include "desktop_multi_window/desktop_multi_window_plugin.h"
+#include "taskbar_media.h"
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
     : project_(project) {}
@@ -32,6 +33,8 @@ bool FlutterWindow::OnCreate() {
     RegisterPlugins(flutter_view_controller->engine());
   });
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
+  taskbar_media_ = std::make_unique<TaskbarMedia>();
+  taskbar_media_->Attach(flutter_controller_->engine()->messenger(), GetHandle());
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
     this->Show();
@@ -46,6 +49,10 @@ bool FlutterWindow::OnCreate() {
 }
 
 void FlutterWindow::OnDestroy() {
+  if (taskbar_media_) {
+    taskbar_media_->Detach();
+    taskbar_media_.reset();
+  }
   if (flutter_controller_) {
     flutter_controller_ = nullptr;
   }
@@ -57,6 +64,13 @@ LRESULT
 FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
                               WPARAM const wparam,
                               LPARAM const lparam) noexcept {
+  if (taskbar_media_) {
+    const auto result =
+        taskbar_media_->HandleMessage(hwnd, message, wparam, lparam);
+    if (result) {
+      return *result;
+    }
+  }
   // Give Flutter, including plugins, an opportunity to handle window messages.
   if (flutter_controller_) {
     std::optional<LRESULT> result =

@@ -35,16 +35,32 @@ class ContentNavigator extends StatefulWidget {
   final Widget child;
 
   @override
-  State<ContentNavigator> createState() => _ContentNavigatorState();
+  ContentNavigatorState createState() => ContentNavigatorState();
 }
 
-class _ContentNavigatorState extends State<ContentNavigator> {
+class ContentNavigatorState extends State<ContentNavigator> {
   final List<_BrowseEntry> _stack = [];
+  var _seq = 0;
+
+  bool get canPop => _stack.isNotEmpty;
+
+  bool pop() {
+    if (_stack.isEmpty) {
+      return false;
+    }
+    setState(() {
+      _stack.removeLast();
+    });
+    return true;
+  }
 
   void _openAlbum(MeluneAlbum album) {
     setState(() {
       _stack.add(
-        _BrowseEntry.album(album, ValueKey('album-${_stack.length}-${album.id}')),
+        _BrowseEntry.album(
+          album,
+          ValueKey('album-${_seq++}-${album.id}'),
+        ),
       );
     });
   }
@@ -58,7 +74,7 @@ class _ContentNavigatorState extends State<ContentNavigator> {
         _BrowseEntry.list(
           title,
           albums,
-          ValueKey('album-list-${_stack.length}-$title'),
+          ValueKey('album-list-${_seq++}-$title'),
         ),
       );
     });
@@ -78,8 +94,15 @@ class _ContentNavigatorState extends State<ContentNavigator> {
           for (final entry in _stack) entry.page(),
         ],
         onDidRemovePage: (page) {
+          if (page.key == const ValueKey('content-root')) {
+            return;
+          }
+          final index = _stack.indexWhere((entry) => entry.key == page.key);
+          if (index < 0) {
+            return;
+          }
           setState(() {
-            _stack.removeWhere((entry) => entry.key == page.key);
+            _stack.removeAt(index);
           });
         },
       ),
