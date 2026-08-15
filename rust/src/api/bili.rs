@@ -211,6 +211,7 @@ pub fn bili_season_tracks(mid: i64, season_id: i64) -> Result<Vec<BiliTrack>, St
             };
             let batch = json_list(&data)
                 .into_iter()
+                .filter(|item| is_music_entry(item, true))
                 .filter_map(map_archive_item)
                 .collect::<Vec<_>>();
             let batch_len = batch.len();
@@ -359,6 +360,7 @@ fn collect_music_archives(data: &Value, assume_music: bool) -> Vec<BiliTrack> {
 fn collect_hot_items(payload: &Value) -> Vec<BiliTrack> {
     json_list(payload)
         .into_iter()
+        .filter(|item| is_music_entry(item, true))
         .filter_map(|item| map_archive_item(item.clone()).or_else(|| map_search_item(item)))
         .collect()
 }
@@ -594,7 +596,16 @@ fn is_vip(data: &Value) -> bool {
 
 /// B 站音乐分区 tid=3 及子区。搜索/首页只保留这些，避免混入动画、游戏等视频。
 fn is_music_tid(tid: i64) -> bool {
-    matches!(tid, 3 | 28 | 29 | 30 | 31 | 59 | 130 | 193 | 243 | 244)
+    matches!(tid, 3 | 28 | 29 | 30 | 31 | 59 | 130 | 193 | 194 | 243 | 244)
+}
+
+/// 更接近「一首歌」的子区：原创 / 翻唱 / VOCALOID / 演奏 / MV / 电音。
+fn is_song_tid(tid: i64) -> bool {
+    matches!(tid, 28 | 30 | 31 | 59 | 193 | 194)
+}
+
+fn is_non_song_tid(tid: i64) -> bool {
+    matches!(tid, 29 | 243 | 244)
 }
 
 fn is_music_label(text: &str) -> bool {
@@ -605,10 +616,81 @@ fn is_music_label(text: &str) -> bool {
     HINTS.iter().any(|hint| lower.contains(hint))
 }
 
-fn is_music_entry(item: &Value, assume_music: bool) -> bool {
-    let tid = first_i64(&[&item["typeid"], &item["tid"], &item["type_id"]]);
-    if is_music_tid(tid) {
+fn duration_sec_of(item: &Value) -> u32 {
+    if item["duration"].is_string() {
+        let text = json_str(&item["duration"]);
+        let parsed = parse_duration(&text);
+        if parsed > 0 {
+            return parsed;
+        }
+        return as_i64(&item["duration"]) as u32;
+    }
+    as_i64(&item["duration"]) as u32
+}
+
+fn is_rejected_song_title(text: &str) -> bool {
+    const BLOCKS: [&str; 18] = [
+        "直播回放",
+        "直播录像",
+        "演唱会",
+        "全场",
+        "电台",
+        "播客",
+        "访谈",
+        "采访",
+        "教程",
+        "教学",
+        "乐评",
+        "盘点",
+        "开箱",
+        "纪录片",
+        "晚会",
+        "幕后",
+        "解说",
+        "reaction",
+    ];
+    let lower = text.to_lowercase();
+    BLOCKS.iter().any(|hint| lower.contains(&hint.to_lowercase()))
+}
+
+fn looks_like_song_collection(text: &str) -> bool {
+    ["歌单", "合集", "专辑", "精选", "playlist"]
+        .iter()
+        .any(|hint| text.to_lowercase().contains(hint))
+}
+
+fn is_song_duration(item: &Value) -> bool {
+    if page_count_of(item) > 1 {
         return true;
+    }
+    let duration = duration_sec_of(item);
+    if duration == 0 {
+        return true;
+    }
+    if duration >= 30 && duration <= 15 * 60 {
+        return true;
+    }
+    looks_like_song_collection(&json_str(&item["title"])) && duration <= 2 * 3600
+}
+
+fn is_music_entry(item: &Value, assume_music: bool) -> bool {
+    if is_rejected_song_title(&json_str(&item["title"])) {
+        return false;
+    }
+    if !is_song_duration(item) {
+        return false;
+    }
+    let tid = first_i64(&[&item["typeid"], &item["tid"], &item["type_id"]]);
+    if is_non_song_tid(tid) {
+        return false;
+    }
+    if is_song_tid(tid) {
+        return true;
+    }
+    if is_music_tid(tid) {
+        // 音乐综合 / 父分区：只留时长像歌的。
+        let duration = duration_sec_of(item);
+        return duration == 0 || (duration >= 30 && duration <= 10 * 60);
     }
     if is_music_label(&json_str(&item["typename"]))
         || is_music_label(&json_str(&item["tname"]))
@@ -1148,8 +1230,39 @@ mod tests {
         assert!(super::is_music_tid(3));
         assert!(super::is_music_tid(28));
         assert!(super::is_music_tid(31));
+        assert!(super::is_song_tid(28));
+        assert!(super::is_song_tid(194));
+        assert!(!super::is_song_tid(29));
         assert!(!super::is_music_tid(24));
         assert!(!super::is_music_tid(1));
+    }
+
+    #[test]
+    fn keeps_songs_and_drops_concerts() {
+        let song = json!({
+            "typeid": 28,
+            "title": "夜航",
+            "duration": 212
+        });
+        let concert = json!({
+            "typeid": 29,
+            "title": "某乐队演唱会全场",
+            "duration": 7200
+        });
+        let lesson = json!({
+            "typeid": 244,
+            "title": "吉他教学入门",
+            "duration": 600
+        });
+        let game = json!({
+            "typeid": 4,
+            "title": "原神直播回放",
+            "duration": 180
+        });
+        assert!(super::is_music_entry(&song, false));
+        assert!(!super::is_music_entry(&concert, true));
+        assert!(!super::is_music_entry(&lesson, true));
+        assert!(!super::is_music_entry(&game, true));
     }
 
     #[test]
