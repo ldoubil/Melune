@@ -50,12 +50,16 @@ object MeluneMediaHub {
                         synchronized(lock) {
                             snapshot = Snapshot.from(args)
                         }
+                        main.post {
+                            bound.publish()
+                            onButtonsChanged?.invoke()
+                            ensureService(context.applicationContext)
+                        }
                         Thread {
                             prepareArtwork(context.applicationContext)
                             main.post {
                                 bound.publish()
                                 onButtonsChanged?.invoke()
-                                ensureService(context.applicationContext)
                             }
                         }.start()
                         result.success(null)
@@ -67,13 +71,14 @@ object MeluneMediaHub {
     }
 
     private fun ensureService(context: Context) {
+        val intent = android.content.Intent(context, MelunePlaybackService::class.java)
         if (!snapshot.enabled) {
+            runCatching { context.stopService(intent) }
             return
         }
-        val intent = android.content.Intent(context, MelunePlaybackService::class.java)
-        if (snapshot.playing) {
+        try {
             androidx.core.content.ContextCompat.startForegroundService(context, intent)
-        } else {
+        } catch (_: Exception) {
             runCatching { context.startService(intent) }
         }
     }
@@ -288,9 +293,9 @@ class MelunePlayer(context: Context) : SimpleBasePlayer(Looper.getMainLooper()) 
             }
         }
         val playbackState = when {
-            snap.loading -> Player.STATE_BUFFERING
-            snap.playing || snap.durationMs > 0 -> Player.STATE_READY
-            else -> Player.STATE_IDLE
+            !snap.enabled || snap.id.isEmpty() -> Player.STATE_IDLE
+            snap.loading && !snap.playing -> Player.STATE_BUFFERING
+            else -> Player.STATE_READY
         }
         return builder
             .setPlaylist(playlist)

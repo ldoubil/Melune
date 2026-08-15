@@ -1,9 +1,17 @@
 package dev.melune.melune.media
 
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
+import android.content.pm.ServiceInfo
+import android.os.Build
 import android.os.Bundle
+import androidx.core.app.NotificationCompat
+import androidx.core.app.ServiceCompat
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import androidx.media3.session.SessionCommand
@@ -11,6 +19,7 @@ import androidx.media3.session.SessionResult
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import dev.melune.melune.MainActivity
+import dev.melune.melune.R
 
 @UnstableApi
 class MelunePlaybackService : MediaSessionService() {
@@ -18,6 +27,15 @@ class MelunePlaybackService : MediaSessionService() {
 
     override fun onCreate() {
         super.onCreate()
+        ensureChannel()
+        setMediaNotificationProvider(
+            DefaultMediaNotificationProvider.Builder(this)
+                .setChannelId(CHANNEL_ID)
+                .setChannelName(R.string.playback_channel_name)
+                .setSmallIcon(R.drawable.ic_stat_melune)
+                .build(),
+        )
+        setShowNotificationForIdlePlayer(SHOW_NOTIFICATION_FOR_IDLE_PLAYER_ALWAYS)
         val player = MeluneMediaHub.player ?: MelunePlayer(applicationContext).also {
             MeluneMediaHub.player = it
         }
@@ -40,10 +58,25 @@ class MelunePlaybackService : MediaSessionService() {
         val buttons = MeluneMediaHub.customButtons()
         session?.setCustomLayout(buttons)
         session?.setMediaButtonPreferences(buttons)
+        player.publish()
+        enterForeground()
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        enterForeground()
+        return super.onStartCommand(intent, flags, startId)
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? {
         return session
+    }
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        val playing = MeluneMediaHub.snapshot.playing
+        if (!playing) {
+            session?.player?.stop()
+            stopSelf()
+        }
     }
 
     override fun onDestroy() {
@@ -51,6 +84,62 @@ class MelunePlaybackService : MediaSessionService() {
         session?.release()
         session = null
         super.onDestroy()
+    }
+
+    private fun enterForeground() {
+        val snap = MeluneMediaHub.snapshot
+        val title = snap.title.ifEmpty { getString(R.string.playback_channel_name) }
+        val text = snap.artist.ifEmpty { "Melune · 洛音" }
+        val notification: Notification = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_stat_melune)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setOngoing(snap.playing || snap.enabled)
+            .setOnlyAlertOnce(true)
+            .setSilent(true)
+            .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setContentIntent(
+                PendingIntent.getActivity(
+                    this,
+                    0,
+                    Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                ),
+            )
+            .build()
+        val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+        } else {
+            0
+        }
+        ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, type)
+    }
+
+    private fun ensureChannel() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            return
+        }
+        val manager = getSystemService(NotificationManager::class.java) ?: return
+        val existing = manager.getNotificationChannel(CHANNEL_ID)
+        if (existing != null) {
+            return
+        }
+        manager.createNotificationChannel(
+            NotificationChannel(
+                CHANNEL_ID,
+                getString(R.string.playback_channel_name),
+                NotificationManager.IMPORTANCE_LOW,
+            ).apply {
+                setShowBadge(false)
+                setSound(null, null)
+            },
+        )
+    }
+
+    companion object {
+        const val CHANNEL_ID = "dev.melune.melune.playback"
+        const val NOTIFICATION_ID = DefaultMediaNotificationProvider.DEFAULT_NOTIFICATION_ID
     }
 }
 
