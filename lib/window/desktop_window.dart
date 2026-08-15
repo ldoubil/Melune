@@ -1,6 +1,19 @@
 import 'package:melune/window/window_controller.dart';
 import 'package:window_manager/window_manager.dart';
 
+Future<WindowController> bootstrapWindow() async {
+  if (!isDesktopWindow) {
+    return WindowController();
+  }
+  await windowManager.ensureInitialized();
+  await windowManager.setTitleBarStyle(
+    TitleBarStyle.hidden,
+    windowButtonVisibility: false,
+  );
+  await windowManager.setTitle('Melune · 洛音');
+  return DesktopWindowController();
+}
+
 class DesktopWindowController extends WindowController with WindowListener {
   DesktopWindowController() {
     windowManager.addListener(this);

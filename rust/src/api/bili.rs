@@ -116,8 +116,13 @@ pub fn bili_init(cookie_dir: String) -> Result<BiliInitResult, String> {
             user,
         });
     }
-    let proxy = AudioProxy::start()?;
-    let proxy_base = proxy.base_url();
+    let proxy_base = match AudioProxy::start() {
+        Ok(proxy) => proxy.base_url(),
+        Err(err) => {
+            eprintln!("melune audio proxy: {err}");
+            String::new()
+        }
+    };
     *guard = Some(BiliState {
         session,
         proxy_base: proxy_base.clone(),
@@ -128,6 +133,9 @@ pub fn bili_init(cookie_dir: String) -> Result<BiliInitResult, String> {
 #[flutter_rust_bridge::frb]
 pub fn bili_proxy_url(audio_url: String) -> Result<String, String> {
     with_state(|state| {
+        if state.proxy_base.is_empty() {
+            return Ok(audio_url.clone());
+        }
         Ok(format!(
             "{}/audio?u={}",
             state.proxy_base,
@@ -173,7 +181,7 @@ pub fn bili_qr_poll(qrcode_key: String) -> Result<BiliQrPoll, String> {
 pub fn bili_search(keyword: String, page: u32) -> Result<BiliSearchPage, String> {
     with_state(|state| {
         let data = state.session.search_video(&keyword, page.max(1), 20)?;
-        let items = data["result"]
+        let mut items = data["result"]
             .as_array()
             .cloned()
             .unwrap_or_default()
@@ -181,6 +189,7 @@ pub fn bili_search(keyword: String, page: u32) -> Result<BiliSearchPage, String>
             .filter(|item| is_music_entry(item, false))
             .filter_map(map_search_item)
             .collect::<Vec<_>>();
+        fill_page_counts(&mut state.session, &mut items);
         let total_results = as_i64(&data["numResults"]);
         let total_pages = data["numPages"].as_u64().unwrap_or(0) as u32;
         Ok(BiliSearchPage {
@@ -355,6 +364,21 @@ fn collect_music_archives(data: &Value, assume_music: bool) -> Vec<BiliTrack> {
         .filter(|item| is_music_entry(item, assume_music))
         .filter_map(map_archive_item)
         .collect()
+}
+
+fn fill_page_counts(session: &mut crate::bili::Session, tracks: &mut [BiliTrack]) {
+    for track in tracks.iter_mut() {
+        if track.page_count > 1 || track.bvid.is_empty() {
+            continue;
+        }
+        let Ok(data) = session.page_list(&track.bvid) else {
+            continue;
+        };
+        let n = data.as_array().map(|pages| pages.len() as u32).unwrap_or(0);
+        if n > 1 {
+            track.page_count = n;
+        }
+    }
 }
 
 fn collect_hot_items(payload: &Value) -> Vec<BiliTrack> {
@@ -667,10 +691,8 @@ fn is_song_duration(item: &Value) -> bool {
     if duration == 0 {
         return true;
     }
-    if duration >= 30 && duration <= 15 * 60 {
-        return true;
-    }
-    looks_like_song_collection(&json_str(&item["title"])) && duration <= 2 * 3600
+    // 搜索结果的 duration 往往是全部分 P 总时长。多 P 专辑会被 15 分钟上限误杀。
+    duration >= 25 && duration <= 3 * 3600
 }
 
 fn is_music_entry(item: &Value, assume_music: bool) -> bool {
@@ -688,9 +710,11 @@ fn is_music_entry(item: &Value, assume_music: bool) -> bool {
         return true;
     }
     if is_music_tid(tid) {
-        // 音乐综合 / 父分区：只留时长像歌的。
+        // 音乐综合 / 父分区：短的当单曲，标题像专辑的留给分 P 判定。
         let duration = duration_sec_of(item);
-        return duration == 0 || (duration >= 30 && duration <= 10 * 60);
+        return duration == 0
+            || (duration >= 30 && duration <= 10 * 60)
+            || looks_like_song_collection(&json_str(&item["title"]));
     }
     if is_music_label(&json_str(&item["typename"]))
         || is_music_label(&json_str(&item["tname"]))
@@ -1193,8 +1217,17 @@ fn first_i64(values: &[&Value]) -> i64 {
 }
 
 fn page_count_of(item: &Value) -> u32 {
-    let n = as_i64(&item["videos"]);
-    if n > 1 { n as u32 } else { 1 }
+    if let Some(pages) = item["pages"].as_array() {
+        if pages.len() > 1 {
+            return pages.len() as u32;
+        }
+    }
+    let n = first_i64(&[&item["videos"], &item["video"]["videos"]]);
+    if n > 1 {
+        n as u32
+    } else {
+        1
+    }
 }
 
 fn season_id_of(item: &Value) -> i64 {
@@ -1263,6 +1296,12 @@ mod tests {
         assert!(!super::is_music_entry(&concert, true));
         assert!(!super::is_music_entry(&lesson, true));
         assert!(!super::is_music_entry(&game, true));
+        assert_eq!(super::page_count_of(&json!({"videos": 1})), 1);
+        assert_eq!(super::page_count_of(&json!({"videos": "12"})), 12);
+        assert_eq!(
+            super::page_count_of(&json!({"pages": [{}, {}, {}]})),
+            3
+        );
     }
 
     #[test]

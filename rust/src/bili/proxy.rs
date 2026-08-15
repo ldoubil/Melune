@@ -9,23 +9,51 @@ const REFERER: &str = "https://www.bilibili.com";
 
 pub struct AudioProxy {
     pub port: u16,
+    loopback: bool,
 }
 
 impl AudioProxy {
     pub fn start() -> Result<Self, String> {
-        let listener = TcpListener::bind("127.0.0.1:0").map_err(|e| e.to_string())?;
-        listener.set_nonblocking(false).map_err(|e| e.to_string())?;
-        let port = listener.local_addr().map_err(|e| e.to_string())?.port();
+        let listener = bind_listener()?;
+        listener
+            .set_nonblocking(false)
+            .map_err(|e| format!("音频代理 set_nonblocking 失败：{e}"))?;
+        let addr = listener
+            .local_addr()
+            .map_err(|e| format!("音频代理读取端口失败：{e}"))?;
+        let port = addr.port();
         thread::Builder::new()
             .name("melune-bili-proxy".into())
             .spawn(move || accept_loop(listener))
-            .map_err(|e| e.to_string())?;
-        Ok(Self { port })
+            .map_err(|e| format!("无法启动音频代理线程：{e}"))?;
+        Ok(Self {
+            port,
+            loopback: addr.is_ipv4(),
+        })
     }
 
     pub fn base_url(&self) -> String {
-        format!("http://127.0.0.1:{}", self.port)
+        if self.loopback {
+            format!("http://127.0.0.1:{}", self.port)
+        } else {
+            format!("http://[::1]:{}", self.port)
+        }
     }
+}
+
+fn bind_listener() -> Result<TcpListener, String> {
+    const CANDIDATES: &[&str] = &["127.0.0.1:0", "[::1]:0", "0.0.0.0:0", "[::]:0"];
+    let mut errors = Vec::new();
+    for addr in CANDIDATES {
+        match TcpListener::bind(*addr) {
+            Ok(listener) => return Ok(listener),
+            Err(err) => errors.push(format!("{addr} → {err}")),
+        }
+    }
+    Err(format!(
+        "无法绑定本地音频代理：{}",
+        errors.join("；")
+    ))
 }
 
 fn accept_loop(listener: TcpListener) {

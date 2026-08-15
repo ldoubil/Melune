@@ -21,8 +21,10 @@ pub struct Session {
 
 impl Session {
     pub fn open(cookie_dir: &str) -> Result<Self, String> {
-        let dir = PathBuf::from(cookie_dir);
-        fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+        let dir = PathBuf::from(cookie_dir.trim());
+        fs::create_dir_all(&dir).map_err(|e| {
+            format!("无法创建 cookie 目录 {}：{e}", dir.display())
+        })?;
         let cookie_path = dir.join("cookies.json");
         let mut cookies = load_cookies(&cookie_path);
         ensure_buvid(&mut cookies);
@@ -37,7 +39,9 @@ impl Session {
 
     pub fn persist(&self) -> Result<(), String> {
         let json = serde_json::to_string_pretty(&self.cookies).map_err(|e| e.to_string())?;
-        fs::write(&self.cookie_path, json).map_err(|e| e.to_string())
+        fs::write(&self.cookie_path, json).map_err(|e| {
+            format!("无法写入 {}：{e}", self.cookie_path.display())
+        })
     }
 
     pub fn is_logged_in(&self) -> bool {
@@ -235,6 +239,18 @@ impl Session {
             REFERER,
         )?;
         self.require_data(body, "/x/web-interface/view")
+    }
+
+    /// 稿件分 P 列表。搜索结果经常不带 `videos`，用这条数 P 数。
+    pub fn page_list(&mut self, bvid: &str) -> Result<Value, String> {
+        let body = self.get_json(
+            &format!(
+                "/x/player/pagelist?bvid={}",
+                wbi::encode_uri_component_pub(bvid)
+            ),
+            REFERER,
+        )?;
+        self.require_data(body, "/x/player/pagelist")
     }
 
     pub fn playurl(&mut self, bvid: &str, cid: i64, avid: Option<i64>) -> Result<Value, String> {

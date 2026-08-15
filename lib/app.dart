@@ -66,3 +66,49 @@ class MeluneApp extends StatelessWidget {
     );
   }
 }
+
+class MeluneBootApp extends StatelessWidget {
+  const MeluneBootApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = MeluneTokens.dark;
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: buildMeluneTheme(tokens, Brightness.dark),
+      home: Scaffold(
+        backgroundColor: tokens.colorBg,
+        body: Center(
+          child: CircularProgressIndicator(color: tokens.colorBrand),
+        ),
+      ),
+    );
+  }
+}
+
+class MeluneErrorApp extends StatelessWidget {
+  const MeluneErrorApp({super.key, required this.error});
+
+  final String error;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = MeluneTokens.dark;
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: buildMeluneTheme(tokens, Brightness.dark),
+      home: Scaffold(
+        backgroundColor: tokens.colorBg,
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: SelectableText(
+              '启动失败\n\n$error',
+              style: TextStyle(color: tokens.colorContrast, height: 1.4),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}

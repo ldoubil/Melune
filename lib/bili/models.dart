@@ -56,7 +56,7 @@ class MeluneTrack {
 
   Duration get duration => Duration(seconds: durationSec);
 
-  bool get isPlaylist => pageCount > 1 || seasonId > 0;
+  bool get isPlaylist => pageCount > 1;
 
   MeluneTrack copyWith({
     int? cid,

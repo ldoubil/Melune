@@ -4,7 +4,6 @@ import 'package:melune/bili/models.dart';
 import 'package:melune/player/playback_store.dart';
 import 'package:melune/theme/tokens.dart';
 import 'package:melune/widgets/album_card.dart';
-import 'package:melune/widgets/browse_scope.dart';
 import 'package:melune/widgets/track_tile.dart';
 
 enum _SearchKind { all, playlists, tracks }
@@ -19,10 +18,20 @@ class SearchPage extends StatefulWidget {
 }
 
 class _SearchPageState extends State<SearchPage> {
-  var _loading = false;
+  static const _warmPages = 4;
+  static const _maxAutoPages = 12;
+
+  final _items = <MeluneTrack>[];
+  final _seen = <String>{};
   var _kind = _SearchKind.all;
+  var _loading = false;
+  var _loadingMore = false;
+  var _filling = false;
+  var _hasMore = false;
+  var _page = 0;
+  var _totalPages = 0;
+  var _generation = 0;
   String? _error;
-  MeluneSearchPage? _result;
 
   @override
   void initState() {
@@ -41,42 +50,158 @@ class _SearchPageState extends State<SearchPage> {
   }
 
   Future<void> _search(String keyword) async {
+    final gen = ++_generation;
     setState(() {
       _loading = true;
+      _loadingMore = false;
       _error = null;
       _kind = _SearchKind.all;
+      _items.clear();
+      _seen.clear();
+      _page = 0;
+      _totalPages = 0;
+      _hasMore = true;
     });
-    try {
-      final page = await BiliScope.of(context).search(keyword);
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _result = page;
-        _loading = false;
-      });
-    } catch (err) {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _loading = false;
-        _error = err.toString();
-      });
+    await _fill(gen, warm: true);
+  }
+
+  Future<void> _loadMore() async {
+    if (_loading || _loadingMore || _filling || !_hasMore) {
+      return;
     }
+    await _fill(_generation, warm: false);
+  }
+
+  Future<void> _fill(int gen, {required bool warm}) async {
+    if (_filling || widget.query.isEmpty) {
+      return;
+    }
+    _filling = true;
+    if (_page > 0 && mounted && gen == _generation) {
+      setState(() => _loadingMore = true);
+    }
+    try {
+      final bili = BiliScope.of(context);
+      while (mounted && gen == _generation && _hasMore) {
+        final next = _page + 1;
+        if (_totalPages > 0 && next > _totalPages) {
+          _hasMore = false;
+          break;
+        }
+        final page = await bili.search(widget.query, page: next);
+        if (!mounted || gen != _generation) {
+          return;
+        }
+        _append(page.items);
+        _page = next;
+        _totalPages = page.totalPages;
+        _hasMore = _totalPages > 0
+            ? _page < _totalPages
+            : page.items.isNotEmpty;
+        setState(() {
+          _loading = false;
+          _error = null;
+        });
+        if (!warm) {
+          break;
+        }
+        if (!_hasMore) {
+          break;
+        }
+        if (_page >= _warmPages && _enoughVisible) {
+          break;
+        }
+        if (_page >= _maxAutoPages) {
+          break;
+        }
+      }
+    } catch (err) {
+      if (!mounted || gen != _generation) {
+        return;
+      }
+      setState(() {
+        _error = err.toString();
+        if (_items.isEmpty) {
+          _hasMore = false;
+        }
+      });
+    } finally {
+      _filling = false;
+      if (mounted && gen == _generation) {
+        setState(() {
+          _loading = false;
+          _loadingMore = false;
+        });
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && gen == _generation) {
+            _ensureFilled();
+          }
+        });
+      }
+    }
+  }
+
+  void _append(List<MeluneTrack> batch) {
+    for (final track in batch) {
+      if (_seen.add(track.id)) {
+        _items.add(track);
+      }
+    }
+  }
+
+  bool get _enoughVisible {
+    return switch (_kind) {
+      _SearchKind.all => _items.length >= 16,
+      _SearchKind.playlists => playlistsFromTracks(_items).length >= 8,
+      _SearchKind.tracks => singlesFromTracks(_items).length >= 12,
+    };
+  }
+
+  void _ensureFilled() {
+    if (!_hasMore || _filling || _loading) {
+      return;
+    }
+    if (!_enoughVisible) {
+      _loadMore();
+    }
+  }
+
+  void _selectKind(_SearchKind kind) {
+    if (_kind == kind) {
+      return;
+    }
+    setState(() => _kind = kind);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _ensureFilled();
+      }
+    });
+  }
+
+  bool _onScroll(ScrollNotification notification) {
+    if (notification.metrics.axis != Axis.vertical) {
+      return false;
+    }
+    final metrics = notification.metrics;
+    if (metrics.maxScrollExtent <= 0) {
+      return false;
+    }
+    if (metrics.pixels >= metrics.maxScrollExtent - 480) {
+      _loadMore();
+    }
+    return false;
   }
 
   @override
   Widget build(BuildContext context) {
-    final items = _result?.items ?? const <MeluneTrack>[];
-    final playlists = playlistsFromTracks(items);
-    final singles = singlesFromTracks(items);
+    final playlists = playlistsFromTracks(_items);
+    final singles = singlesFromTracks(_items);
 
-    if (_loading) {
+    if (_loading && _items.isEmpty) {
       return const Center(child: CircularProgressIndicator());
     }
 
-    if (items.isEmpty) {
+    if (_items.isEmpty) {
       return _Empty(
         error: _error,
         searched: widget.query.isNotEmpty,
@@ -96,24 +221,29 @@ class _SearchPageState extends State<SearchPage> {
                 key: const Key('search-kind-all'),
                 label: '全部',
                 selected: _kind == _SearchKind.all,
-                onTap: () => setState(() => _kind = _SearchKind.all),
+                onTap: () => _selectKind(_SearchKind.all),
               ),
               _KindChip(
                 key: const Key('search-kind-playlists'),
                 label: '歌单',
                 selected: _kind == _SearchKind.playlists,
-                onTap: () => setState(() => _kind = _SearchKind.playlists),
+                onTap: () => _selectKind(_SearchKind.playlists),
               ),
               _KindChip(
                 key: const Key('search-kind-tracks'),
                 label: '单曲',
                 selected: _kind == _SearchKind.tracks,
-                onTap: () => setState(() => _kind = _SearchKind.tracks),
+                onTap: () => _selectKind(_SearchKind.tracks),
               ),
             ],
           ),
         ),
-        Expanded(child: _body(playlists, singles)),
+        Expanded(
+          child: NotificationListener<ScrollNotification>(
+            onNotification: _onScroll,
+            child: _body(playlists, singles),
+          ),
+        ),
       ],
     );
   }
@@ -124,8 +254,19 @@ class _SearchPageState extends State<SearchPage> {
     final showTracks = _kind == _SearchKind.all || _kind == _SearchKind.tracks;
     final visiblePlaylists = showPlaylists ? playlists : const <MeluneAlbum>[];
     final visibleSingles = showTracks ? singles : const <MeluneTrack>[];
+    final trailing = _SearchStatus(
+      loading: _loadingMore,
+      hasMore: _hasMore && _error == null,
+      error: _error,
+    );
 
     if (visiblePlaylists.isEmpty && visibleSingles.isEmpty) {
+      if (_hasMore || _loadingMore) {
+        return ListView(
+          padding: context.listPadding(22, 16, 22, 22),
+          children: [trailing],
+        );
+      }
       return _Empty(
         error: null,
         searched: true,
@@ -136,35 +277,83 @@ class _SearchPageState extends State<SearchPage> {
     if (_kind == _SearchKind.playlists) {
       return AlbumGrid(
         albums: visiblePlaylists,
-        padding: context.listPadding(16, 8, 16, 22),
+        padding: context.listPadding(16, 8, 16, 8),
+        trailing: trailing,
       );
     }
 
-    return ListView(
-      padding: context.listPadding(16, 8, 16, 22),
-      children: [
-        if (visiblePlaylists.isNotEmpty) ...[
-          if (_kind == _SearchKind.all) const _SectionLabel('歌单'),
-          if (_kind == _SearchKind.all) const SizedBox(height: 10),
-          AlbumStrip(albums: visiblePlaylists, empty: ''),
-          const SizedBox(height: 22),
-        ],
-        if (visibleSingles.isNotEmpty) ...[
-          if (_kind == _SearchKind.all && visiblePlaylists.isNotEmpty) ...[
-            const _SectionLabel('单曲'),
-            const SizedBox(height: 8),
-          ],
-          for (var i = 0; i < visibleSingles.length; i++)
-            TrackTile(
-              track: visibleSingles[i],
-              onTap: () => PlaybackScope.of(context).playTracks(
-                visibleSingles,
-                start: i,
-              ),
-            ),
-        ],
-      ],
+    return ListView.builder(
+      padding: context.listPadding(16, 8, 16, 8),
+      itemCount: _listCount(visiblePlaylists, visibleSingles),
+      itemBuilder: (context, index) {
+        return _listChild(index, visiblePlaylists, visibleSingles, trailing);
+      },
     );
+  }
+
+  int _listCount(List<MeluneAlbum> playlists, List<MeluneTrack> singles) {
+    var count = 0;
+    if (playlists.isNotEmpty) {
+      if (_kind == _SearchKind.all) {
+        count += 3;
+      }
+      count += 1;
+    }
+    if (singles.isNotEmpty) {
+      if (_kind == _SearchKind.all && playlists.isNotEmpty) {
+        count += 2;
+      }
+      count += singles.length;
+    }
+    return count + 1;
+  }
+
+  Widget _listChild(
+    int index,
+    List<MeluneAlbum> playlists,
+    List<MeluneTrack> singles,
+    Widget trailing,
+  ) {
+    var cursor = index;
+    if (playlists.isNotEmpty) {
+      if (_kind == _SearchKind.all) {
+        if (cursor == 0) {
+          return const _SectionLabel('歌单');
+        }
+        if (cursor == 1) {
+          return const SizedBox(height: 10);
+        }
+        cursor -= 2;
+      }
+      if (cursor == 0) {
+        return AlbumStrip(albums: playlists, empty: '');
+      }
+      if (cursor == 1 && _kind == _SearchKind.all) {
+        return const SizedBox(height: 22);
+      }
+      cursor -= _kind == _SearchKind.all ? 2 : 1;
+    }
+    if (singles.isNotEmpty) {
+      if (_kind == _SearchKind.all && playlists.isNotEmpty) {
+        if (cursor == 0) {
+          return const _SectionLabel('单曲');
+        }
+        if (cursor == 1) {
+          return const SizedBox(height: 8);
+        }
+        cursor -= 2;
+      }
+      if (cursor >= 0 && cursor < singles.length) {
+        return TrackTile(
+          track: singles[cursor],
+          onTap: () => PlaybackScope.of(context).playTracks(
+            singles,
+            start: cursor,
+          ),
+        );
+      }
+    }
+    return trailing;
   }
 }
 
@@ -213,6 +402,48 @@ class _SectionLabel extends StatelessWidget {
         fontWeight: FontWeight.w800,
         color: context.tokens.colorContrast,
       ),
+    );
+  }
+}
+
+class _SearchStatus extends StatelessWidget {
+  const _SearchStatus({
+    required this.loading,
+    required this.hasMore,
+    this.error,
+  });
+
+  final bool loading;
+  final bool hasMore;
+  final String? error;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+    Widget child;
+    if (loading) {
+      child = const SizedBox(
+        width: 22,
+        height: 22,
+        child: CircularProgressIndicator(strokeWidth: 2.4),
+      );
+    } else if (error != null) {
+      child = Text(
+        error!,
+        textAlign: TextAlign.center,
+        style: TextStyle(color: tokens.colorBase, fontSize: 13),
+      );
+    } else if (hasMore) {
+      child = const SizedBox(height: 12);
+    } else {
+      child = Text(
+        '已经到底了',
+        style: TextStyle(color: tokens.colorBase, fontSize: 12),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 18, 16, 28),
+      child: Center(child: child),
     );
   }
 }

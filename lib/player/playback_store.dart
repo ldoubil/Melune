@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:melune/bili/bili_client.dart';
 import 'package:melune/bili/models.dart';
+import 'package:melune/window/desktop_lyric.dart';
+import 'package:melune/window/window_controller.dart';
 
 enum PlaybackMode { sequential, shuffle, repeatOne, repeatAll }
 
@@ -27,7 +29,13 @@ extension PlaybackModeX on PlaybackMode {
 }
 
 class PlaybackStore extends ChangeNotifier {
-  PlaybackStore({required this.bili});
+  PlaybackStore({required this.bili}) {
+    attachDesktopLyricHost(
+      onClosed: closeDesktopLyricFromOverlay,
+      onToggleLike: toggleLike,
+      onToggleLock: toggleDesktopLyricLock,
+    );
+  }
 
   final BiliClient bili;
 
@@ -54,6 +62,9 @@ class PlaybackStore extends ChangeNotifier {
   final List<MeluneAudioQuality> _qualities = [];
   var _preferredQualityId = 0;
   var _selectedQualityId = 0;
+  var _desktopLyricOpen = false;
+  var _desktopLyricLocked = true;
+  String _desktopLyricSig = '';
   final _random = Random();
 
   MeluneTrack? get track => _queue.isEmpty ? null : _queue[_index];
@@ -94,6 +105,9 @@ class PlaybackStore extends ChangeNotifier {
   }
 
   String get qualityLabel => currentQuality?.label ?? '音质';
+
+  bool get desktopLyricOpen => _desktopLyricOpen;
+  bool get desktopLyricLocked => _desktopLyricLocked;
 
   String get displayTitle {
     final current = track;
@@ -243,6 +257,7 @@ class PlaybackStore extends ChangeNotifier {
       _likedTracks[item.id] = item;
     }
     notifyListeners();
+    _pushDesktopLyric(force: true);
   }
 
   void openPlaylist() {
@@ -282,6 +297,65 @@ class PlaybackStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  void toggleDesktopLyric() {
+    if (!isDesktopWindow) {
+      return;
+    }
+    _desktopLyricOpen = !_desktopLyricOpen;
+    _pushDesktopLyric(force: true);
+    notifyListeners();
+  }
+
+  void toggleDesktopLyricLock() {
+    if (!_desktopLyricOpen) {
+      return;
+    }
+    _desktopLyricLocked = !_desktopLyricLocked;
+    _pushDesktopLyric(force: true);
+    notifyListeners();
+  }
+
+  void closeDesktopLyricFromOverlay() {
+    if (!_desktopLyricOpen) {
+      return;
+    }
+    _desktopLyricOpen = false;
+    notifyListeners();
+  }
+
+  void _pushDesktopLyric({bool force = false}) {
+    if (!_desktopLyricOpen && !force) {
+      return;
+    }
+    final index = activeLyricIndex;
+    final current = (index >= 0 && index < _lyrics.length)
+        ? _lyrics[index].content
+        : displayTitle;
+    final previous = (index > 0 && index < _lyrics.length)
+        ? _lyrics[index - 1].content
+        : '';
+    final next = (index >= 0 && index + 1 < _lyrics.length)
+        ? _lyrics[index + 1].content
+        : '';
+    final coverUrl = track?.coverUrl ?? '';
+    final signature =
+        '$_desktopLyricOpen|$_desktopLyricLocked|$liked|$coverUrl|$previous|$current|$next';
+    if (!force && signature == _desktopLyricSig) {
+      return;
+    }
+    _desktopLyricSig = signature;
+    syncDesktopLyric(
+      visible: _desktopLyricOpen,
+      locked: _desktopLyricLocked,
+      liked: liked,
+      coverUrl: coverUrl,
+      previous: previous,
+      current: current,
+      next: next,
+      title: displayTitle,
+    );
+  }
+
   void cyclePlaybackMode() {
     _mode = PlaybackMode.values[(_mode.index + 1) % PlaybackMode.values.length];
     notifyListeners();
@@ -290,6 +364,7 @@ class PlaybackStore extends ChangeNotifier {
   Future<void> seek(Duration value) async {
     final total = duration.inMilliseconds;
     _position = Duration(milliseconds: value.inMilliseconds.clamp(0, total));
+    _pushDesktopLyric();
     notifyListeners();
     await _player?.seek(_position);
   }
@@ -420,7 +495,14 @@ class PlaybackStore extends ChangeNotifier {
         throw Exception('没有可播放的音频地址');
       }
       final player = await _ensurePlayer();
-      await player.setUrl(url);
+      await player.setUrl(
+        url,
+        headers: const {
+          'Referer': 'https://www.bilibili.com',
+          'User-Agent':
+              'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/125.0.0.0 Mobile Safari/537.36',
+        },
+      );
       await player.setVolume(_volume);
       if (resumeAt != null && resumeAt > Duration.zero) {
         await player.seek(resumeAt);
@@ -451,6 +533,7 @@ class PlaybackStore extends ChangeNotifier {
       _lyrics
         ..clear()
         ..addAll(lines);
+      _pushDesktopLyric(force: true);
       notifyListeners();
     } catch (_) {
       // 没有官方字幕时保持空列表，界面会提示清洗后的歌名。
@@ -479,6 +562,7 @@ class PlaybackStore extends ChangeNotifier {
         return;
       }
       _position = value;
+      _pushDesktopLyric();
       notifyListeners();
     });
     _durationSub = player.durationStream.listen((value) {
@@ -525,6 +609,10 @@ class PlaybackStore extends ChangeNotifier {
 
   @override
   void dispose() {
+    if (_desktopLyricOpen) {
+      _desktopLyricOpen = false;
+      _pushDesktopLyric(force: true);
+    }
     unawaited(_positionSub?.cancel());
     unawaited(_stateSub?.cancel());
     unawaited(_durationSub?.cancel());

@@ -68,27 +68,38 @@ class AlbumGrid extends StatelessWidget {
     super.key,
     required this.albums,
     this.padding,
+    this.trailing,
   });
 
   final List<MeluneAlbum> albums;
   final EdgeInsets? padding;
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
-    return GridView.builder(
-      padding: padding,
+    return CustomScrollView(
       physics: const AlwaysScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-        maxCrossAxisExtent: 172,
-        mainAxisExtent: AlbumCard.height,
-        mainAxisSpacing: 12,
-        crossAxisSpacing: 12,
-      ),
-      itemCount: albums.length,
-      itemBuilder: (context, index) => Align(
-        alignment: Alignment.topLeft,
-        child: AlbumCard(album: albums[index]),
-      ),
+      slivers: [
+        SliverPadding(
+          padding: padding ?? EdgeInsets.zero,
+          sliver: SliverGrid(
+            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+              maxCrossAxisExtent: 172,
+              mainAxisExtent: AlbumCard.height,
+              mainAxisSpacing: 12,
+              crossAxisSpacing: 12,
+            ),
+            delegate: SliverChildBuilderDelegate(
+              (context, index) => Align(
+                alignment: Alignment.topLeft,
+                child: AlbumCard(album: albums[index]),
+              ),
+              childCount: albums.length,
+            ),
+          ),
+        ),
+        if (trailing != null) SliverToBoxAdapter(child: trailing),
+      ],
     );
   }
 }

@@ -9,6 +9,7 @@ import 'package:melune/theme/tokens.dart';
 import 'package:melune/widgets/audio_quality.dart';
 import 'package:melune/widgets/track_cover.dart';
 import 'package:melune/widgets/volume_button.dart';
+import 'package:melune/window/window_controller.dart';
 
 class PlaybackBar extends StatelessWidget {
   const PlaybackBar({super.key});
@@ -40,6 +41,8 @@ class PlaybackBar extends StatelessWidget {
         store.qualityLabel,
         store.selectedQualityId,
         store.playlistOpen,
+        store.desktopLyricOpen,
+        store.desktopLyricLocked,
       ),
       builder: (context, store) {
         return Padding(
@@ -61,9 +64,9 @@ class PlaybackBar extends StatelessWidget {
                         children: [
                           _TrackInfo(player: store, compact: compact),
                           Expanded(
-                            child: _Transport(player: store),
+                            child: _Transport(player: store, compact: compact),
                           ),
-                          _Extras(player: store),
+                          _Extras(player: store, compact: compact),
                         ],
                       ),
                     ),
@@ -137,9 +140,10 @@ class _TrackInfo extends StatelessWidget {
 }
 
 class _Transport extends StatelessWidget {
-  const _Transport({required this.player});
+  const _Transport({required this.player, required this.compact});
 
   final PlaybackStore player;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -196,75 +200,109 @@ class _Transport extends StatelessWidget {
             ),
           ],
         ),
-        ListenableBuilder(
-          listenable: player,
-          builder: (context, _) {
-            final progress = player.duration.inMilliseconds == 0
-                ? 0.0
-                : player.position.inMilliseconds / player.duration.inMilliseconds;
-            return ExcludeSemantics(
-              child: Row(
-                children: [
-                  SizedBox(
-                    width: 36,
-                    child: Text(
-                      formatPlayerTime(player.position),
-                      textAlign: TextAlign.right,
-                      style: TextStyle(fontSize: 11, color: tokens.colorBase),
-                    ),
-                  ),
-                  Expanded(
-                    child: SliderTheme(
-                      data: SliderTheme.of(context).copyWith(
-                        trackHeight: 3,
-                        thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
-                        overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
-                        activeTrackColor: tokens.colorBrand,
-                        inactiveTrackColor: tokens.colorBrand.withValues(alpha: 0.22),
-                        thumbColor: tokens.colorBrand,
-                      ),
-                      child: Slider(
-                        value: progress.clamp(0.0, 1.0),
-                        onChanged: (value) {
-                          player.seek(
-                            Duration(
-                              milliseconds:
-                                  (value * player.duration.inMilliseconds).round(),
-                            ),
-                          );
-                        },
+        if (!compact)
+          ListenableBuilder(
+            listenable: player,
+            builder: (context, _) {
+              final progress = player.duration.inMilliseconds == 0
+                  ? 0.0
+                  : player.position.inMilliseconds / player.duration.inMilliseconds;
+              return ExcludeSemantics(
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 36,
+                      child: Text(
+                        formatPlayerTime(player.position),
+                        textAlign: TextAlign.right,
+                        style: TextStyle(fontSize: 11, color: tokens.colorBase),
                       ),
                     ),
-                  ),
-                  SizedBox(
-                    width: 36,
-                    child: Text(
-                      formatPlayerTime(player.duration),
-                      style: TextStyle(fontSize: 11, color: tokens.colorBase),
+                    Expanded(
+                      child: SliderTheme(
+                        data: SliderTheme.of(context).copyWith(
+                          trackHeight: 3,
+                          thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
+                          overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
+                          activeTrackColor: tokens.colorBrand,
+                          inactiveTrackColor: tokens.colorBrand.withValues(alpha: 0.22),
+                          thumbColor: tokens.colorBrand,
+                        ),
+                        child: Slider(
+                          value: progress.clamp(0.0, 1.0),
+                          onChanged: (value) {
+                            player.seek(
+                              Duration(
+                                milliseconds:
+                                    (value * player.duration.inMilliseconds).round(),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
                     ),
-                  ),
-                ],
-              ),
-            );
-          },
-        ),
+                    SizedBox(
+                      width: 36,
+                      child: Text(
+                        formatPlayerTime(player.duration),
+                        style: TextStyle(fontSize: 11, color: tokens.colorBase),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
       ],
     );
   }
 }
 
 class _Extras extends StatelessWidget {
-  const _Extras({required this.player});
+  const _Extras({required this.player, required this.compact});
 
   final PlaybackStore player;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
-    final showVolume = defaultTargetPlatform != TargetPlatform.android;
+    final showVolume =
+        !compact && defaultTargetPlatform != TargetPlatform.android;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         AudioQualityButton(player: player),
+        if (!compact && isDesktopWindow) ...[
+          IconButton(
+            key: const Key('playback-desktop-lyric'),
+            tooltip: player.desktopLyricOpen ? '关闭桌面歌词' : '桌面歌词',
+            visualDensity: VisualDensity.compact,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints.tightFor(width: 32, height: 32),
+            onPressed: player.toggleDesktopLyric,
+            icon: Icon(
+              Icons.lyrics_rounded,
+              color: player.desktopLyricOpen
+                  ? context.tokens.colorBrand
+                  : context.tokens.colorBase,
+            ),
+          ),
+          if (player.desktopLyricOpen)
+            IconButton(
+              key: const Key('playback-desktop-lyric-lock'),
+              tooltip: player.desktopLyricLocked ? '解锁桌面歌词（可拖动）' : '锁定桌面歌词（点穿）',
+              visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints.tightFor(width: 32, height: 32),
+              onPressed: player.toggleDesktopLyricLock,
+              icon: Icon(
+                player.desktopLyricLocked
+                    ? Icons.lock_rounded
+                    : Icons.lock_open_rounded,
+                color: context.tokens.colorBrand,
+              ),
+            ),
+        ],
         IconButton(
           key: const Key('playback-playlist'),
           tooltip: '播放列表',
