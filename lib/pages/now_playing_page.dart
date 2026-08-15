@@ -288,32 +288,31 @@ class _CoverAndTitle extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(28, 8, 28, 12),
             child: Column(
               children: [
-                Expanded(
-                  child: Center(
-                    child: AnimatedScale(
-                      scale: player.playing ? 1 : 0.94,
+                Align(
+                  alignment: Alignment.topCenter,
+                  child: AnimatedScale(
+                    scale: player.playing ? 1 : 0.94,
+                    duration: const Duration(milliseconds: 480),
+                    curve: Curves.easeOutCubic,
+                    child: AnimatedContainer(
                       duration: const Duration(milliseconds: 480),
                       curve: Curves.easeOutCubic,
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 480),
-                        curve: Curves.easeOutCubic,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(22),
-                          boxShadow: player.playing
-                              ? [
-                                  BoxShadow(
-                                    color: tokens.colorBrand.withValues(alpha: 0.28),
-                                    blurRadius: 28,
-                                    offset: const Offset(0, 12),
-                                  ),
-                                ]
-                              : const [],
-                        ),
-                        child: TrackCover(
-                          url: track?.coverUrl ?? '',
-                          size: coverSize,
-                          radius: 22,
-                        ),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(22),
+                        boxShadow: player.playing
+                            ? [
+                                BoxShadow(
+                                  color: tokens.colorBrand.withValues(alpha: 0.28),
+                                  blurRadius: 28,
+                                  offset: const Offset(0, 12),
+                                ),
+                              ]
+                            : const [],
+                      ),
+                      child: TrackCover(
+                        url: track?.coverUrl ?? '',
+                        size: coverSize,
+                        radius: 22,
                       ),
                     ),
                   ),
@@ -344,6 +343,7 @@ class _CoverAndTitle extends StatelessWidget {
                 ),
                 const SizedBox(height: 10),
                 const _Tag(label: '音乐'),
+                const Spacer(),
               ],
             ),
           );

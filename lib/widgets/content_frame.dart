@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:melune/pages/now_playing_page.dart';
 import 'package:melune/pages/playlist_page.dart';
 import 'package:melune/theme/tokens.dart';
 import 'package:melune/widgets/playback_bar.dart';
@@ -48,7 +47,6 @@ class ContentFrame extends StatelessWidget {
               child: PlaybackBar(),
             ),
             const Positioned.fill(child: PlaylistGate()),
-            const Positioned.fill(child: NowPlayingGate()),
           ],
         ),
       ),

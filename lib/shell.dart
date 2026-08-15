@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:melune/app.dart';
 import 'package:melune/pages/favorites_page.dart';
 import 'package:melune/pages/home_page.dart';
+import 'package:melune/pages/now_playing_page.dart';
 import 'package:melune/pages/search_page.dart';
 import 'package:melune/pages/settings_page.dart';
 import 'package:melune/player/playback_store.dart';
@@ -60,11 +61,6 @@ class _MeluneShellState extends State<MeluneShell> {
     }
     final player = PlaybackScope.read(context);
     if (player.nowPlayingOpen) {
-      final wide = MediaQuery.sizeOf(context).width >= 720;
-      if (!wide && player.lyricsExpanded) {
-        player.setLyricsExpanded(false);
-        return;
-      }
       player.closeNowPlaying();
       return;
     }
@@ -115,39 +111,44 @@ class _MeluneShellState extends State<MeluneShell> {
       onPopInvokedWithResult: (didPop, _) => _onPop(didPop),
       child: Scaffold(
         backgroundColor: tokens.colorRaisedBg,
-        body: Column(
+        body: Stack(
           children: [
-            SafeArea(
-              bottom: false,
-              child: MeluneTitleBar(
-                window: widget.window,
-                appName: widget.appName,
-                showAccount: !wide,
-                searchController: _searchController,
-                onSearch: _submitSearch,
-              ),
-            ),
-            Expanded(
-              child: wide
-                  ? Row(
-                      children: [
-                        MeluneSideNav(
-                          index: _index,
-                          onSelect: (index) => setState(() => _index = index),
+            Column(
+              children: [
+                SafeArea(
+                  bottom: false,
+                  child: MeluneTitleBar(
+                    window: widget.window,
+                    appName: widget.appName,
+                    showAccount: !wide,
+                    searchController: _searchController,
+                    onSearch: _submitSearch,
+                  ),
+                ),
+                Expanded(
+                  child: wide
+                      ? Row(
+                          children: [
+                            MeluneSideNav(
+                              index: _index,
+                              onSelect: (index) => setState(() => _index = index),
+                            ),
+                            ContentFrame(wide: true, child: body),
+                          ],
+                        )
+                      : Column(
+                          children: [
+                            ContentFrame(wide: false, child: body),
+                            MeluneMobileNav(
+                              index: _index,
+                              onSelect: (index) => setState(() => _index = index),
+                            ),
+                          ],
                         ),
-                        ContentFrame(wide: true, child: body),
-                      ],
-                    )
-                  : Column(
-                      children: [
-                        ContentFrame(wide: false, child: body),
-                        MeluneMobileNav(
-                          index: _index,
-                          onSelect: (index) => setState(() => _index = index),
-                        ),
-                      ],
-                    ),
+                ),
+              ],
             ),
+            const Positioned.fill(child: NowPlayingGate()),
           ],
         ),
       ),

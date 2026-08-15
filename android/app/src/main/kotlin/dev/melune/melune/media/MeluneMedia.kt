@@ -38,6 +38,9 @@ object MeluneMediaHub {
     var onButtonsChanged: (() -> Unit)? = null
 
     @Volatile
+    var serviceRunning = false
+
+    @Volatile
     var snapshot: Snapshot = Snapshot()
 
     fun bind(context: Context, messenger: BinaryMessenger) {
@@ -73,7 +76,11 @@ object MeluneMediaHub {
     private fun ensureService(context: Context) {
         val intent = android.content.Intent(context, MelunePlaybackService::class.java)
         if (!snapshot.enabled) {
+            serviceRunning = false
             runCatching { context.stopService(intent) }
+            return
+        }
+        if (serviceRunning) {
             return
         }
         try {
@@ -266,6 +273,7 @@ class MelunePlayer(context: Context) : SimpleBasePlayer(Looper.getMainLooper()) 
                 Player.COMMAND_GET_CURRENT_MEDIA_ITEM,
                 Player.COMMAND_GET_METADATA,
                 Player.COMMAND_GET_TIMELINE,
+                Player.COMMAND_GET_AUDIO_ATTRIBUTES,
             )
             .build()
         val builder = State.Builder()
