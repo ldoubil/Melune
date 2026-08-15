@@ -39,6 +39,9 @@ pub struct BiliTrack {
     pub duration_sec: u32,
     pub play_count: i64,
     pub audio_url: String,
+    pub page_count: u32,
+    pub season_id: i64,
+    pub up_mid: i64,
 }
 
 pub struct BiliSearchPage {
@@ -199,6 +202,28 @@ pub fn bili_video_pages(bvid: String) -> Result<Vec<BiliTrack>, String> {
 }
 
 #[flutter_rust_bridge::frb]
+pub fn bili_season_tracks(mid: i64, season_id: i64) -> Result<Vec<BiliTrack>, String> {
+    with_state(|state| {
+        let mut tracks = Vec::new();
+        for page in 1..=8u32 {
+            let Ok(data) = state.session.season_archives(mid, season_id, page, 30) else {
+                break;
+            };
+            let batch = json_list(&data)
+                .into_iter()
+                .filter_map(map_archive_item)
+                .collect::<Vec<_>>();
+            let batch_len = batch.len();
+            tracks.extend(batch);
+            if batch_len < 30 {
+                break;
+            }
+        }
+        Ok(unique_by_bvid(tracks))
+    })
+}
+
+#[flutter_rust_bridge::frb]
 pub fn bili_extract_audio(
     bvid: String,
     aid: i64,
@@ -254,6 +279,9 @@ pub fn bili_extract_audio(
                 duration_sec: duration,
                 play_count,
                 audio_url,
+                page_count: 1,
+                season_id: 0,
+                up_mid: 0,
             },
             qualities,
             selected_id,
@@ -294,14 +322,29 @@ pub fn bili_music_rank() -> Result<Vec<BiliTrack>, String> {
 #[flutter_rust_bridge::frb]
 pub fn bili_new_songs() -> Result<Vec<BiliTrack>, String> {
     with_state(|state| {
-        let data = state.session.new_music()?;
-        Ok(data["list"]
-            .as_array()
-            .cloned()
-            .unwrap_or_default()
-            .into_iter()
-            .filter_map(map_music_center)
-            .collect())
+        // 原创音乐近 7 日按播放量，而不是新碟接口的默认序。
+        let mut tracks = Vec::new();
+        if let Ok(payload) = state.session.cate_hot(28, 7, 1, 30) {
+            tracks = collect_hot_items(&payload);
+        }
+        if tracks.is_empty() {
+            if let Ok(payload) = state.session.newlist_rank(28, 7, 1, 30) {
+                tracks = collect_hot_items(&payload);
+            }
+        }
+        if tracks.is_empty() {
+            if let Ok(data) = state.session.new_music() {
+                tracks = data["list"]
+                    .as_array()
+                    .cloned()
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter_map(map_music_center)
+                    .collect();
+                tracks.sort_by(|a, b| b.play_count.cmp(&a.play_count));
+            }
+        }
+        Ok(unique_by_bvid(tracks))
     })
 }
 
@@ -313,11 +356,48 @@ fn collect_music_archives(data: &Value, assume_music: bool) -> Vec<BiliTrack> {
         .collect()
 }
 
+fn collect_hot_items(payload: &Value) -> Vec<BiliTrack> {
+    json_list(payload)
+        .into_iter()
+        .filter_map(|item| map_archive_item(item.clone()).or_else(|| map_search_item(item)))
+        .collect()
+}
+
+fn unique_by_bvid(tracks: Vec<BiliTrack>) -> Vec<BiliTrack> {
+    let mut seen = HashSet::new();
+    tracks
+        .into_iter()
+        .filter(|track| seen.insert(track.bvid.clone()))
+        .collect()
+}
+
 #[flutter_rust_bridge::frb]
 pub fn bili_music_region(page: u32) -> Result<Vec<BiliTrack>, String> {
     with_state(|state| {
         let page = page.max(1);
-        // 音乐区最新投稿。dynamic/region 对 rid=3 常 404，频道页改走 newlist。
+        // 音乐区近 3 日热门；旧的 newlist 只按投稿时间。
+        if page == 1 {
+            if let Ok(data) = state.session.ranking_region(3, 3) {
+                let tracks = collect_music_archives(&data, true);
+                if !tracks.is_empty() {
+                    return Ok(unique_by_bvid(tracks));
+                }
+            }
+        }
+        for (cate_id, days) in [(130, 3), (31, 3)] {
+            if let Ok(payload) = state.session.cate_hot(cate_id, days, page, 20) {
+                let tracks = collect_hot_items(&payload);
+                if !tracks.is_empty() {
+                    return Ok(unique_by_bvid(tracks));
+                }
+            }
+            if let Ok(payload) = state.session.newlist_rank(cate_id, days, page, 20) {
+                let tracks = collect_hot_items(&payload);
+                if !tracks.is_empty() {
+                    return Ok(unique_by_bvid(tracks));
+                }
+            }
+        }
         for data in [
             state.session.music_region(page, 20),
             state.session.newlist(3, page, 20),
@@ -325,9 +405,10 @@ pub fn bili_music_region(page: u32) -> Result<Vec<BiliTrack>, String> {
             let Ok(data) = data else {
                 continue;
             };
-            let tracks = collect_music_archives(&data, true);
+            let mut tracks = collect_music_archives(&data, true);
             if !tracks.is_empty() {
-                return Ok(tracks);
+                tracks.sort_by(|a, b| b.play_count.cmp(&a.play_count));
+                return Ok(unique_by_bvid(tracks));
             }
         }
         Ok(vec![])
@@ -345,8 +426,19 @@ pub fn bili_music_recommend() -> Result<Vec<BiliTrack>, String> {
 }
 
 fn json_list(data: &Value) -> Vec<Value> {
-    for key in ["archives", "item", "list"] {
+    if let Some(list) = data.as_array() {
+        return list.clone();
+    }
+    for key in ["archives", "item", "list", "result"] {
         if let Some(list) = data[key].as_array() {
+            return list.clone();
+        }
+    }
+    if let Some(list) = data["data"].as_array() {
+        return list.clone();
+    }
+    for key in ["archives", "item", "list", "result"] {
+        if let Some(list) = data["data"][key].as_array() {
             return list.clone();
         }
     }
@@ -544,12 +636,15 @@ fn map_search_item(item: Value) -> Option<BiliTrack> {
         cid: 0,
         title: strip_html(&json_str(&item["title"])),
         artist: json_str(&item["author"]),
-        album_title: String::new(),
+        album_title: json_str(&item["ugc_season"]["title"]),
         cover_url: https_url(&json_str(&item["pic"])),
         duration_sec: parse_duration(&json_str(&item["duration"])),
         play_count: as_i64(&item["play"]),
         audio_url: String::new(),
         bvid,
+        page_count: page_count_of(&item),
+        season_id: season_id_of(&item),
+        up_mid: up_mid_of(&item),
     })
 }
 
@@ -575,6 +670,9 @@ fn map_video_pages(detail: &Value) -> Vec<BiliTrack> {
             duration_sec: as_i64(&detail["duration"]) as u32,
             play_count,
             audio_url: String::new(),
+            page_count: 1,
+            season_id: 0,
+            up_mid: 0,
         }];
     }
     pages
@@ -600,6 +698,9 @@ fn map_video_pages(detail: &Value) -> Vec<BiliTrack> {
                 duration_sec: as_i64(&page["duration"]) as u32,
                 play_count,
                 audio_url: String::new(),
+                page_count: 1,
+                season_id: 0,
+                up_mid: 0,
             }
         })
         .collect()
@@ -627,6 +728,9 @@ fn map_archive_item(item: Value) -> Option<BiliTrack> {
         play_count: first_i64(&[&item["stat"]["view"], &item["play"]]),
         audio_url: String::new(),
         bvid,
+        page_count: page_count_of(&item),
+        season_id: season_id_of(&item),
+        up_mid: up_mid_of(&item),
     })
 }
 
@@ -650,6 +754,9 @@ fn map_music_center(item: Value) -> Option<BiliTrack> {
         play_count: as_i64(&item["total_vv"]),
         audio_url: String::new(),
         bvid,
+        page_count: page_count_of(related).max(page_count_of(&item)),
+        season_id: season_id_of(&item),
+        up_mid: up_mid_of(&item),
     })
 }
 
@@ -670,6 +777,9 @@ fn map_fav_item(item: Value) -> Option<BiliTrack> {
         play_count: as_i64(&item["cnt_info"]["play"]),
         audio_url: String::new(),
         bvid,
+        page_count: page_count_of(&item),
+        season_id: season_id_of(&item),
+        up_mid: up_mid_of(&item),
     })
 }
 
@@ -694,6 +804,9 @@ fn map_history_item(item: Value) -> Option<BiliTrack> {
         play_count: 0,
         audio_url: String::new(),
         bvid,
+        page_count: 1,
+        season_id: 0,
+        up_mid: 0,
     })
 }
 
@@ -995,6 +1108,24 @@ fn first_i64(values: &[&Value]) -> i64 {
         }
     }
     0
+}
+
+fn page_count_of(item: &Value) -> u32 {
+    let n = as_i64(&item["videos"]);
+    if n > 1 { n as u32 } else { 1 }
+}
+
+fn season_id_of(item: &Value) -> i64 {
+    first_i64(&[&item["ugc_season"]["id"], &item["season_id"]])
+}
+
+fn up_mid_of(item: &Value) -> i64 {
+    first_i64(&[
+        &item["mid"],
+        &item["owner"]["mid"],
+        &item["ugc_season"]["mid"],
+        &item["upper"]["mid"],
+    ])
 }
 
 #[cfg(test)]

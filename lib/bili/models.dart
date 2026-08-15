@@ -34,6 +34,9 @@ class MeluneTrack {
     required this.durationSec,
     required this.playCount,
     this.audioUrl = '',
+    this.pageCount = 1,
+    this.seasonId = 0,
+    this.upMid = 0,
   });
 
   final String id;
@@ -47,8 +50,13 @@ class MeluneTrack {
   final int durationSec;
   final int playCount;
   final String audioUrl;
+  final int pageCount;
+  final int seasonId;
+  final int upMid;
 
   Duration get duration => Duration(seconds: durationSec);
+
+  bool get isPlaylist => pageCount > 1 || seasonId > 0;
 
   MeluneTrack copyWith({
     int? cid,
@@ -57,6 +65,9 @@ class MeluneTrack {
     String? albumTitle,
     String? coverUrl,
     int? durationSec,
+    int? pageCount,
+    int? seasonId,
+    int? upMid,
   }) {
     return MeluneTrack(
       id: id,
@@ -70,6 +81,9 @@ class MeluneTrack {
       durationSec: durationSec ?? this.durationSec,
       playCount: playCount,
       audioUrl: audioUrl ?? this.audioUrl,
+      pageCount: pageCount ?? this.pageCount,
+      seasonId: seasonId ?? this.seasonId,
+      upMid: upMid ?? this.upMid,
     );
   }
 }
@@ -130,16 +144,29 @@ class MeluneAlbum {
     this.tracks = const [],
     this.bvid = '',
     this.folderId = 0,
+    this.seasonId = 0,
+    this.upMid = 0,
   });
 
   factory MeluneAlbum.fromTrack(MeluneTrack track) {
+    final playlist = track.isPlaylist;
+    final parts = <String>[
+      if (playlist && track.pageCount > 1) '${track.pageCount} 首',
+      if (track.artist.isNotEmpty) track.artist,
+    ];
     return MeluneAlbum(
-      id: track.bvid.isNotEmpty ? track.bvid : track.id,
-      title: track.albumTitle.isNotEmpty ? track.albumTitle : track.title,
-      subtitle: track.artist.isEmpty ? 'Bilibili 音乐' : track.artist,
+      id: track.seasonId > 0
+          ? 'season-${track.seasonId}'
+          : (track.bvid.isNotEmpty ? track.bvid : track.id),
+      title: playlist && track.albumTitle.isNotEmpty
+          ? track.albumTitle
+          : (track.albumTitle.isNotEmpty ? track.albumTitle : track.title),
+      subtitle: parts.isEmpty ? 'Bilibili 音乐' : parts.join(' · '),
       coverUrl: track.coverUrl,
       tracks: [track],
       bvid: track.bvid,
+      seasonId: track.seasonId,
+      upMid: track.upMid,
     );
   }
 
@@ -181,6 +208,8 @@ class MeluneAlbum {
   final List<MeluneTrack> tracks;
   final String bvid;
   final int folderId;
+  final int seasonId;
+  final int upMid;
 
   MeluneAlbum copyWith({List<MeluneTrack>? tracks, String? coverUrl}) {
     return MeluneAlbum(
@@ -191,6 +220,8 @@ class MeluneAlbum {
       tracks: tracks ?? this.tracks,
       bvid: bvid,
       folderId: folderId,
+      seasonId: seasonId,
+      upMid: upMid,
     );
   }
 }
@@ -199,13 +230,27 @@ List<MeluneAlbum> albumsFromTracks(List<MeluneTrack> tracks) {
   final seen = <String>{};
   final albums = <MeluneAlbum>[];
   for (final track in tracks) {
-    final id = track.bvid.isNotEmpty ? track.bvid : track.id;
-    if (!seen.add(id)) {
+    final album = MeluneAlbum.fromTrack(track);
+    if (!seen.add(album.id)) {
       continue;
     }
-    albums.add(MeluneAlbum.fromTrack(track));
+    albums.add(album);
   }
   return albums;
+}
+
+List<MeluneAlbum> playlistsFromTracks(List<MeluneTrack> tracks) {
+  return albumsFromTracks([
+    for (final track in tracks)
+      if (track.isPlaylist) track,
+  ]);
+}
+
+List<MeluneTrack> singlesFromTracks(List<MeluneTrack> tracks) {
+  return [
+    for (final track in tracks)
+      if (!track.isPlaylist) track,
+  ];
 }
 
 class MeluneHistoryPage {

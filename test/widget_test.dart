@@ -83,7 +83,7 @@ void main() {
 
     await tester.tap(find.byKey(const Key('playlist-remove-0')));
     await tester.pumpAndSettle();
-    expect(find.text('从专辑里加入歌曲'), findsOneWidget);
+    expect(find.text('从歌单里加入歌曲'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('playlist-back')));
     await tester.pumpAndSettle();
@@ -129,6 +129,21 @@ void main() {
     await tester.tap(find.byKey(const Key('nav-search')));
     await tester.pumpAndSettle();
     expect(find.text('输入关键词开始搜索'), findsOneWidget);
+
+    await tester.enterText(find.byKey(const Key('title-search-field')), '夜');
+    await tester.testTextInput.receiveAction(TextInputAction.search);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('search-kind-playlists')), findsOneWidget);
+    expect(find.byKey(const Key('album-card-BV1list1')), findsOneWidget);
+    expect(find.text('夜航'), findsWidgets);
+
+    await tester.tap(find.byKey(const Key('search-kind-playlists')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('album-card-BV1list1')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('search-kind-tracks')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('album-card-BV1list1')), findsNothing);
 
     await tester.tap(find.byKey(const Key('nav-favorites')));
     await tester.pumpAndSettle();

@@ -43,6 +43,18 @@ class RustBiliClient implements BiliClient {
   }
 
   @override
+  Future<List<MeluneTrack>> seasonTracks({
+    required int mid,
+    required int seasonId,
+  }) async {
+    final tracks = await rust.biliSeasonTracks(
+      mid: _i64(mid),
+      seasonId: _i64(seasonId),
+    );
+    return tracks.map(_track).toList();
+  }
+
+  @override
   Future<MeluneExtractedAudio> extractAudio(
     MeluneTrack track, {
     int qualityId = 0,
@@ -194,6 +206,9 @@ MeluneTrack _track(rust.BiliTrack track) {
     durationSec: track.durationSec,
     playCount: _toInt(track.playCount),
     audioUrl: track.audioUrl,
+    pageCount: track.pageCount,
+    seasonId: _toInt(track.seasonId),
+    upMid: _toInt(track.upMid),
   );
 }
 

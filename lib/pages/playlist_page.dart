@@ -170,7 +170,7 @@ class PlaylistPage extends StatelessWidget {
                 child: store.queue.isEmpty
                     ? Center(
                         child: Text(
-                          '从专辑里加入歌曲',
+                          '从歌单里加入歌曲',
                           style: TextStyle(color: tokens.colorBase),
                         ),
                       )

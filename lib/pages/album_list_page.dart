@@ -50,7 +50,7 @@ class AlbumListPage extends StatelessWidget {
             child: albums.isEmpty
                 ? Center(
                     child: Text(
-                      '暂时没有专辑',
+                      '暂时没有歌单',
                       style: TextStyle(color: tokens.colorBase),
                     ),
                   )

@@ -94,7 +94,7 @@ class MeluneTitleBar extends StatelessWidget implements PreferredSizeWidget {
                               fontSize: 13,
                             ),
                             decoration: InputDecoration(
-                              hintText: '搜索歌曲',
+                              hintText: '搜索歌单或单曲',
                               hintStyle: TextStyle(
                                 color: tokens.colorBase,
                                 fontSize: 13,

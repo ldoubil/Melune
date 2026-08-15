@@ -56,6 +56,19 @@ class FakeBiliClient implements BiliClient {
       durationSec: 186,
       playCount: 420,
     ),
+    MeluneTrack(
+      id: 'BV1list1',
+      bvid: 'BV1list1',
+      aid: 5,
+      cid: 5,
+      title: '夜航全专',
+      artist: '洛音',
+      albumTitle: '夜航',
+      coverUrl: '',
+      durationSec: 1200,
+      playCount: 2200,
+      pageCount: 6,
+    ),
   ];
 
   @override
@@ -93,17 +106,55 @@ class FakeBiliClient implements BiliClient {
 
   @override
   Future<MeluneSearchPage> search(String keyword, {int page = 1}) async {
-    return const MeluneSearchPage(
-      items: [],
+    if (keyword.isEmpty) {
+      return const MeluneSearchPage(
+        items: [],
+        page: 1,
+        totalPages: 0,
+        totalResults: 0,
+      );
+    }
+    final needle = keyword.toLowerCase();
+    final items = _samples
+        .where(
+          (item) =>
+              item.title.toLowerCase().contains(needle) ||
+              item.artist.toLowerCase().contains(needle) ||
+              item.albumTitle.toLowerCase().contains(needle),
+        )
+        .toList(growable: false);
+    return MeluneSearchPage(
+      items: items,
       page: 1,
-      totalPages: 0,
-      totalResults: 0,
+      totalPages: items.isEmpty ? 0 : 1,
+      totalResults: items.length,
     );
   }
 
   @override
   Future<List<MeluneTrack>> videoPages(String bvid) async {
-    return _samples.where((item) => item.bvid == bvid).toList(growable: false);
+    final match = _samples.where((item) => item.bvid == bvid);
+    if (match.isEmpty) {
+      return const [];
+    }
+    final base = match.first;
+    if (base.pageCount <= 1) {
+      return [base];
+    }
+    return [
+      for (var i = 1; i <= base.pageCount; i++)
+        base.copyWith(title: '${base.title} P$i', cid: i),
+    ];
+  }
+
+  @override
+  Future<List<MeluneTrack>> seasonTracks({
+    required int mid,
+    required int seasonId,
+  }) async {
+    return _samples
+        .where((item) => item.seasonId == seasonId)
+        .toList(growable: false);
   }
 
   @override

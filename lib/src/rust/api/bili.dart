@@ -6,7 +6,7 @@
 import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `as_i64`, `audio_quality_detail`, `audio_quality_from_item`, `audio_quality_label`, `audio_quality_rank`, `clean_title`, `collect_audio_qualities`, `collect_music_archives`, `empty_nav`, `extract_book_title`, `first_i64`, `first_str`, `https_url`, `is_music_entry`, `is_music_label`, `is_music_tid`, `is_vip_audio`, `is_vip`, `json_list`, `json_str`, `map_archive_item`, `map_fav_item`, `map_history_item`, `map_lyric_line`, `map_music_center`, `map_search_item`, `map_user`, `map_video_pages`, `parse_duration`, `pick_audio_quality`, `stream_url`, `strip_html`, `subtitle_rank`, `track_id`, `with_state`
+// These functions are ignored because they are not marked as `pub`: `as_i64`, `audio_quality_detail`, `audio_quality_from_item`, `audio_quality_label`, `audio_quality_rank`, `clean_title`, `collect_audio_qualities`, `collect_hot_items`, `collect_music_archives`, `empty_nav`, `extract_book_title`, `first_i64`, `first_str`, `https_url`, `is_music_entry`, `is_music_label`, `is_music_tid`, `is_vip_audio`, `is_vip`, `json_list`, `json_str`, `map_archive_item`, `map_fav_item`, `map_history_item`, `map_lyric_line`, `map_music_center`, `map_search_item`, `map_user`, `map_video_pages`, `page_count_of`, `parse_duration`, `pick_audio_quality`, `season_id_of`, `stream_url`, `strip_html`, `subtitle_rank`, `track_id`, `unique_by_bvid`, `up_mid_of`, `with_state`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `BiliState`
 
 Future<BiliInitResult> biliInit({required String cookieDir}) =>
@@ -32,6 +32,14 @@ Future<BiliSearchPage> biliSearch({
 
 Future<List<BiliTrack>> biliVideoPages({required String bvid}) =>
     RustLib.instance.api.crateApiBiliBiliVideoPages(bvid: bvid);
+
+Future<List<BiliTrack>> biliSeasonTracks({
+  required PlatformInt64 mid,
+  required PlatformInt64 seasonId,
+}) => RustLib.instance.api.crateApiBiliBiliSeasonTracks(
+  mid: mid,
+  seasonId: seasonId,
+);
 
 Future<BiliExtractedAudio> biliExtractAudio({
   required String bvid,
@@ -333,6 +341,9 @@ class BiliTrack {
   final int durationSec;
   final PlatformInt64 playCount;
   final String audioUrl;
+  final int pageCount;
+  final PlatformInt64 seasonId;
+  final PlatformInt64 upMid;
 
   const BiliTrack({
     required this.id,
@@ -346,6 +357,9 @@ class BiliTrack {
     required this.durationSec,
     required this.playCount,
     required this.audioUrl,
+    required this.pageCount,
+    required this.seasonId,
+    required this.upMid,
   });
 
   @override
@@ -360,7 +374,10 @@ class BiliTrack {
       coverUrl.hashCode ^
       durationSec.hashCode ^
       playCount.hashCode ^
-      audioUrl.hashCode;
+      audioUrl.hashCode ^
+      pageCount.hashCode ^
+      seasonId.hashCode ^
+      upMid.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -377,7 +394,10 @@ class BiliTrack {
           coverUrl == other.coverUrl &&
           durationSec == other.durationSec &&
           playCount == other.playCount &&
-          audioUrl == other.audioUrl;
+          audioUrl == other.audioUrl &&
+          pageCount == other.pageCount &&
+          seasonId == other.seasonId &&
+          upMid == other.upMid;
 }
 
 class BiliUser {

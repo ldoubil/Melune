@@ -67,7 +67,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.12.0';
 
   @override
-  int get rustContentHash => -763588483;
+  int get rustContentHash => -1084011083;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -130,6 +130,11 @@ abstract class RustLibApi extends BaseApi {
   Future<BiliSearchPage> crateApiBiliBiliSearch({
     required String keyword,
     required int page,
+  });
+
+  Future<List<BiliTrack>> crateApiBiliBiliSeasonTracks({
+    required PlatformInt64 mid,
+    required PlatformInt64 seasonId,
   });
 
   Future<List<BiliTrack>> crateApiBiliBiliVideoPages({required String bvid});
@@ -671,6 +676,41 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   );
 
   @override
+  Future<List<BiliTrack>> crateApiBiliBiliSeasonTracks({
+    required PlatformInt64 mid,
+    required PlatformInt64 seasonId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_i_64(mid, serializer);
+          sse_encode_i_64(seasonId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 19,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_bili_track,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiBiliBiliSeasonTracksConstMeta,
+        argValues: [mid, seasonId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiBiliBiliSeasonTracksConstMeta =>
+      const TaskConstMeta(
+        debugName: "bili_season_tracks",
+        argNames: ["mid", "seasonId"],
+      );
+
+  @override
   Future<List<BiliTrack>> crateApiBiliBiliVideoPages({required String bvid}) {
     return handler.executeNormal(
       NormalTask(
@@ -680,7 +720,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 19,
+            funcId: 20,
             port: port_,
           );
         },
@@ -705,7 +745,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_String(name, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 20)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 21)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_String,
@@ -730,7 +770,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 21,
+            funcId: 22,
             port: port_,
           );
         },
@@ -879,8 +919,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   BiliTrack dco_decode_bili_track(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 11)
-      throw Exception('unexpected arr length: expect 11 but see ${arr.length}');
+    if (arr.length != 14)
+      throw Exception('unexpected arr length: expect 14 but see ${arr.length}');
     return BiliTrack(
       id: dco_decode_String(arr[0]),
       bvid: dco_decode_String(arr[1]),
@@ -893,6 +933,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       durationSec: dco_decode_u_32(arr[8]),
       playCount: dco_decode_i_64(arr[9]),
       audioUrl: dco_decode_String(arr[10]),
+      pageCount: dco_decode_u_32(arr[11]),
+      seasonId: dco_decode_i_64(arr[12]),
+      upMid: dco_decode_i_64(arr[13]),
     );
   }
 
@@ -1121,6 +1164,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_durationSec = sse_decode_u_32(deserializer);
     var var_playCount = sse_decode_i_64(deserializer);
     var var_audioUrl = sse_decode_String(deserializer);
+    var var_pageCount = sse_decode_u_32(deserializer);
+    var var_seasonId = sse_decode_i_64(deserializer);
+    var var_upMid = sse_decode_i_64(deserializer);
     return BiliTrack(
       id: var_id,
       bvid: var_bvid,
@@ -1133,6 +1179,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       durationSec: var_durationSec,
       playCount: var_playCount,
       audioUrl: var_audioUrl,
+      pageCount: var_pageCount,
+      seasonId: var_seasonId,
+      upMid: var_upMid,
     );
   }
 
@@ -1366,6 +1415,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_u_32(self.durationSec, serializer);
     sse_encode_i_64(self.playCount, serializer);
     sse_encode_String(self.audioUrl, serializer);
+    sse_encode_u_32(self.pageCount, serializer);
+    sse_encode_i_64(self.seasonId, serializer);
+    sse_encode_i_64(self.upMid, serializer);
   }
 
   @protected

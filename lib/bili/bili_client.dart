@@ -15,6 +15,11 @@ abstract class BiliClient {
 
   Future<List<MeluneTrack>> videoPages(String bvid);
 
+  Future<List<MeluneTrack>> seasonTracks({
+    required int mid,
+    required int seasonId,
+  });
+
   Future<MeluneExtractedAudio> extractAudio(
     MeluneTrack track, {
     int qualityId = 0,

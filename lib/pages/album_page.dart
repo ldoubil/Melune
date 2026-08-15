@@ -39,6 +39,14 @@ class _AlbumPageState extends State<AlbumPage> {
       var tracks = _album.tracks;
       if (_album.folderId > 0) {
         tracks = await _loadFolder(bili, _album.folderId);
+      } else if (_album.seasonId > 0 && _album.upMid > 0) {
+        tracks = await bili.seasonTracks(
+          mid: _album.upMid,
+          seasonId: _album.seasonId,
+        );
+        if (tracks.isEmpty && _album.bvid.isNotEmpty) {
+          tracks = await bili.videoPages(_album.bvid);
+        }
       } else if (_album.bvid.isNotEmpty) {
         final pages = await bili.videoPages(_album.bvid);
         if (pages.length > 1 || (tracks.length <= 1 && pages.isNotEmpty)) {
@@ -122,7 +130,7 @@ class _AlbumPageState extends State<AlbumPage> {
                 ),
                 Expanded(
                   child: Text(
-                    '专辑',
+                    '歌单',
                     style: TextStyle(
                       fontWeight: FontWeight.w700,
                       color: tokens.colorContrast,
@@ -183,7 +191,7 @@ class _AlbumPageState extends State<AlbumPage> {
                       const SizedBox(height: 22),
                       if (tracks.isEmpty)
                         Text(
-                          '这张专辑还没有曲目',
+                          '这个歌单还没有曲目',
                           style: TextStyle(color: tokens.colorBase),
                         )
                       else

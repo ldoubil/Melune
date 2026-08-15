@@ -123,6 +123,18 @@ impl Session {
         Ok(body["data"].clone())
     }
 
+    fn require_ok_payload(&self, body: Value, path: &str) -> Result<Value, String> {
+        let code = body["code"].as_i64().unwrap_or(-1);
+        if code != 0 {
+            let message = body["message"]
+                .as_str()
+                .or_else(|| body["msg"].as_str())
+                .unwrap_or("未知错误");
+            return Err(format!("B站接口 {path} 错误 {code}：{message}"));
+        }
+        Ok(body)
+    }
+
     fn wbi_keys(&mut self) -> Result<WbiKeys, String> {
         if let Some((keys, ts)) = &self.wbi {
             if ts.elapsed() < Duration::from_secs(6 * 3600) {
@@ -285,6 +297,69 @@ impl Session {
         self.require_data(body, "/x/web-interface/newlist")
     }
 
+    /// 分区近 1/3/7 日热门。音乐区 `rid=3`。
+    pub fn ranking_region(&mut self, rid: i64, day: u32) -> Result<Value, String> {
+        let day = if matches!(day, 1 | 3 | 7) { day } else { 3 };
+        let body = self.get_json(
+            &format!("/x/web-interface/ranking/region?rid={rid}&day={day}"),
+            "https://www.bilibili.com/v/music/",
+        )?;
+        self.require_data(body, "/x/web-interface/ranking/region")
+    }
+
+    /// 子分区近 N 日按播放量排序。对齐 B 站频道页「热门」。
+    pub fn cate_hot(
+        &mut self,
+        cate_id: i64,
+        days: u32,
+        page: u32,
+        page_size: u32,
+    ) -> Result<Value, String> {
+        let (time_from, time_to) = ymd_range_cst(days.max(1));
+        let url = format!(
+            "https://s.search.bilibili.com/cate/search?main_ver=v3&search_type=video&view_type=hot_rank&order=click&copy_right=-1&cate_id={cate_id}&page={}&pagesize={}&time_from={time_from}&time_to={time_to}",
+            page.max(1),
+            page_size.clamp(1, 50),
+        );
+        let body = self.get_json(&url, "https://www.bilibili.com/v/music/")?;
+        self.require_ok_payload(body, "cate/search")
+    }
+
+    /// 频道页近期热门的 API 站版本，和 `cate/search` 同参。
+    pub fn newlist_rank(
+        &mut self,
+        cate_id: i64,
+        days: u32,
+        page: u32,
+        page_size: u32,
+    ) -> Result<Value, String> {
+        let (time_from, time_to) = ymd_range_cst(days.max(1));
+        let path = format!(
+            "/x/web-interface/newlist_rank?main_ver=v3&search_type=video&view_type=hot_rank&order=click&copy_right=-1&cate_id={cate_id}&page={}&pagesize={}&time_from={time_from}&time_to={time_to}",
+            page.max(1),
+            page_size.clamp(1, 50),
+        );
+        let body = self.get_json(&path, "https://www.bilibili.com/v/music/")?;
+        self.require_ok_payload(body, "/x/web-interface/newlist_rank")
+    }
+
+    /// UP 主合集里的稿件列表，当作歌单。
+    pub fn season_archives(
+        &mut self,
+        mid: i64,
+        season_id: i64,
+        page: u32,
+        page_size: u32,
+    ) -> Result<Value, String> {
+        let path = format!(
+            "/x/polymer/web-space/seasons_archives_list?mid={mid}&season_id={season_id}&sort_reverse=false&page_num={}&page_size={}",
+            page.max(1),
+            page_size.clamp(1, 50),
+        );
+        let body = self.get_json(&path, REFERER)?;
+        self.require_data(body, "/x/polymer/web-space/seasons_archives_list")
+    }
+
     /// 首页推荐兜底，对齐 BiliMusic `getRecommendedVideos`。
     pub fn top_rcmd(&mut self, ps: u32) -> Result<Value, String> {
         let body = self.get_json(
@@ -409,4 +484,34 @@ fn map_ureq(err: ureq::Error) -> String {
         }
         other => other.to_string(),
     }
+}
+
+/// 东八区日期区间，供分区热门的 `time_from` / `time_to`（YYYYMMDD）。
+fn ymd_range_cst(days: u32) -> (String, String) {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64
+        + 8 * 3600;
+    let today = now.div_euclid(86400);
+    (
+        unix_days_to_ymd(today - days as i64),
+        unix_days_to_ymd(today),
+    )
+}
+
+/// Unix 日序（1970-01-01 = 0）→ 公历日期。
+/// https://howardhinnant.github.io/date_algorithms.html#civil_from_days
+fn unix_days_to_ymd(z: i64) -> String {
+    let z = z + 719468;
+    let era = z.div_euclid(146097);
+    let doe = (z - era * 146097) as u32;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let y = yoe as i64 + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    format!("{y:04}{m:02}{d:02}")
 }

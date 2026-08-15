@@ -136,7 +136,7 @@ class _HomePageState extends State<HomePage> {
                       MeluneAlbum.fromTracks(
                         id: 'news',
                         title: '新歌速递',
-                        subtitle: '刚刚上线',
+                        subtitle: '近三日热门',
                         tracks: _latest,
                       ),
                     if (_rank.isNotEmpty)

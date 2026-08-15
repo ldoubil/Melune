@@ -137,7 +137,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.album_outlined, size: 48, color: tokens.colorBase),
+                Icon(Icons.queue_music_rounded, size: 48, color: tokens.colorBase),
                 const SizedBox(height: 12),
                 Text(
                   '还没有收藏',
@@ -147,7 +147,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  loggedIn ? '喜欢的专辑会出现在这里' : '登录后会从 B 站同步收藏夹',
+                  loggedIn ? '喜欢的歌单会出现在这里' : '登录后会从 B 站同步收藏夹',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: tokens.colorBase,
                   ),
@@ -163,7 +163,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
               child: Text(
-                '专辑',
+                '歌单',
                 style: TextStyle(
                   fontSize: 22,
                   fontWeight: FontWeight.w800,
