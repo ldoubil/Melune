@@ -571,27 +571,30 @@ class _TransportRow extends StatelessWidget {
               child: InkWell(
                 key: const Key('now-playing-play'),
                 customBorder: const CircleBorder(),
-                onTap: store.loading || store.track == null
-                    ? null
-                    : store.togglePlay,
+                onTap: store.track == null ? null : store.togglePlay,
                 child: SizedBox(
                   width: 64,
                   height: 64,
-                  child: store.loading
-                      ? Padding(
-                          padding: const EdgeInsets.all(18),
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      Icon(
+                        store.playing
+                            ? Icons.pause_rounded
+                            : Icons.play_arrow_rounded,
+                        size: 36,
+                        color: tokens.colorOnBrand,
+                      ),
+                      if (store.loading)
+                        Padding(
+                          padding: const EdgeInsets.all(4),
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
-                            color: tokens.colorOnBrand,
+                            color: tokens.colorOnBrand.withValues(alpha: 0.7),
                           ),
-                        )
-                      : Icon(
-                          store.playing
-                              ? Icons.pause_rounded
-                              : Icons.play_arrow_rounded,
-                          size: 36,
-                          color: tokens.colorOnBrand,
                         ),
+                    ],
+                  ),
                 ),
               ),
             ),

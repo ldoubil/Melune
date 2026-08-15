@@ -168,24 +168,29 @@ class _Transport extends StatelessWidget {
               child: InkWell(
                 key: const Key('playback-play'),
                 customBorder: const CircleBorder(),
-                onTap: player.loading ? null : player.togglePlay,
+                onTap: player.togglePlay,
                 child: SizedBox(
                   width: 34,
                   height: 34,
-                  child: player.loading
-                      ? Padding(
-                          padding: const EdgeInsets.all(8),
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      Icon(
+                        player.playing
+                            ? Icons.pause_rounded
+                            : Icons.play_arrow_rounded,
+                        color: tokens.colorOnBrand,
+                      ),
+                      if (player.loading)
+                        Padding(
+                          padding: const EdgeInsets.all(3),
                           child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: tokens.colorOnBrand,
+                            strokeWidth: 1.6,
+                            color: tokens.colorOnBrand.withValues(alpha: 0.7),
                           ),
-                        )
-                      : Icon(
-                          player.playing
-                              ? Icons.pause_rounded
-                              : Icons.play_arrow_rounded,
-                          color: tokens.colorOnBrand,
                         ),
+                    ],
+                  ),
                 ),
               ),
             ),

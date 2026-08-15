@@ -57,7 +57,9 @@ class PlaybackStore extends ChangeNotifier implements MediaSessionHost {
   StreamSubscription<void>? _noisySub;
 
   int _index = 0;
+  var _startGen = 0;
   var _playing = false;
+  var _wantPlaying = false;
   var _loading = false;
   var _nowPlayingOpen = false;
   var _playlistOpen = false;
@@ -243,7 +245,9 @@ class PlaybackStore extends ChangeNotifier implements MediaSessionHost {
     _queue.clear();
     _index = 0;
     _playing = false;
+    _wantPlaying = false;
     _loading = false;
+    _startGen++;
     _lyrics.clear();
     _position = Duration.zero;
     _duration = Duration.zero;
@@ -259,17 +263,26 @@ class PlaybackStore extends ChangeNotifier implements MediaSessionHost {
     if (track == null) {
       return;
     }
-    final player = _player;
-    if (player == null) {
-      await _startCurrent();
+    _wantPlaying = !_playing;
+    _playing = _wantPlaying;
+    notifyListeners();
+    if (_loading) {
+      if (!_wantPlaying) {
+        await _player?.pause();
+      }
       return;
     }
-    if (_playing) {
-      await player.pause();
-    } else {
+    final player = _player;
+    if (player == null) {
+      await _startCurrent(autoplay: _wantPlaying);
+      return;
+    }
+    if (_wantPlaying) {
       await _audioSession?.setActive(true);
       await player.play();
+      return;
     }
+    await player.pause();
   }
 
   @override
@@ -431,15 +444,7 @@ class PlaybackStore extends ChangeNotifier implements MediaSessionHost {
 
   @override
   Future<void> next() async {
-    if (_queue.isEmpty) {
-      return;
-    }
-    if (shuffle && _queue.length > 1) {
-      _index = _shuffledIndex();
-    } else {
-      _index = (_index + 1) % _queue.length;
-    }
-    await _startCurrent();
+    await _skipTo(_nextIndex(), autoplay: _playing);
   }
 
   Future<void> _advanceFromCompletion() async {
@@ -451,10 +456,13 @@ class PlaybackStore extends ChangeNotifier implements MediaSessionHost {
       return;
     }
     if (_mode == PlaybackMode.sequential && _index >= _queue.length - 1) {
+      _wantPlaying = false;
+      _playing = false;
+      notifyListeners();
       await _player?.pause();
       return;
     }
-    await next();
+    await _skipTo(_nextIndex(), autoplay: true);
   }
 
   @override
@@ -466,12 +474,35 @@ class PlaybackStore extends ChangeNotifier implements MediaSessionHost {
       await seek(Duration.zero);
       return;
     }
-    if (shuffle && _queue.length > 1) {
-      _index = _shuffledIndex();
-    } else {
-      _index = (_index - 1 + _queue.length) % _queue.length;
+    await _skipTo(_previousIndex(), autoplay: _playing);
+  }
+
+  int _nextIndex() {
+    if (_queue.isEmpty) {
+      return 0;
     }
-    await _startCurrent();
+    if (shuffle && _queue.length > 1) {
+      return _shuffledIndex();
+    }
+    return (_index + 1) % _queue.length;
+  }
+
+  int _previousIndex() {
+    if (_queue.isEmpty) {
+      return 0;
+    }
+    if (shuffle && _queue.length > 1) {
+      return _shuffledIndex();
+    }
+    return (_index - 1 + _queue.length) % _queue.length;
+  }
+
+  Future<void> _skipTo(int index, {required bool autoplay}) async {
+    if (_queue.isEmpty) {
+      return;
+    }
+    _index = index;
+    await _startCurrent(autoplay: autoplay);
   }
 
   @override
@@ -492,8 +523,14 @@ class PlaybackStore extends ChangeNotifier implements MediaSessionHost {
     if (current == null) {
       return;
     }
+    final gen = ++_startGen;
     _loading = true;
     _error = null;
+    _wantPlaying = autoplay;
+    _playing = autoplay;
+    if (!autoplay) {
+      await _player?.pause();
+    }
     if (!keepLyrics) {
       _lyrics.clear();
       _position = Duration.zero;
@@ -501,12 +538,14 @@ class PlaybackStore extends ChangeNotifier implements MediaSessionHost {
       _selectedQualityId = 0;
     }
     _duration = current.duration;
-    _playing = false;
     notifyListeners();
     try {
       var playableTrack = current;
       if (_queue.length == 1 && current.cid == 0 && current.bvid.isNotEmpty) {
         final expanded = await bili.videoPages(current.bvid);
+        if (gen != _startGen) {
+          return;
+        }
         if (expanded.length > 1) {
           _queue
             ..clear()
@@ -522,6 +561,9 @@ class PlaybackStore extends ChangeNotifier implements MediaSessionHost {
         playableTrack,
         qualityId: _preferredQualityId,
       );
+      if (gen != _startGen) {
+        return;
+      }
       final playable = extracted.track;
       _qualities
         ..clear()
@@ -538,6 +580,9 @@ class PlaybackStore extends ChangeNotifier implements MediaSessionHost {
         throw Exception('没有可播放的音频地址');
       }
       final player = await _ensurePlayer();
+      if (gen != _startGen) {
+        return;
+      }
       await player.setUrl(
         url,
         headers: const {
@@ -546,25 +591,41 @@ class PlaybackStore extends ChangeNotifier implements MediaSessionHost {
               'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/125.0.0.0 Mobile Safari/537.36',
         },
       );
+      if (gen != _startGen) {
+        return;
+      }
       await _applyOutputVolume();
       if (resumeAt != null && resumeAt > Duration.zero) {
         await player.seek(resumeAt);
         _position = resumeAt;
       }
-      if (autoplay) {
+      if (gen != _startGen) {
+        return;
+      }
+      if (_wantPlaying) {
         await _audioSession?.setActive(true);
         await player.play();
+        _playing = true;
+      } else {
+        await player.pause();
+        _playing = false;
       }
       _remember(playable);
       if (!keepLyrics) {
         unawaited(_loadLyrics(_queue[_index]));
       }
     } catch (err) {
+      if (gen != _startGen) {
+        return;
+      }
       _error = err.toString().replaceFirst('Exception: ', '');
       _playing = false;
+      _wantPlaying = false;
     } finally {
-      _loading = false;
-      notifyListeners();
+      if (gen == _startGen) {
+        _loading = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -677,7 +738,11 @@ class PlaybackStore extends ChangeNotifier implements MediaSessionHost {
       }
     });
     _stateSub = player.playerStateStream.listen((state) {
+      if (_loading) {
+        return;
+      }
       _playing = state.playing;
+      _wantPlaying = state.playing;
       if (state.playing) {
         unawaited(_audioSession?.setActive(true));
       }
