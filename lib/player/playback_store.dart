@@ -1,0 +1,554 @@
+import 'dart:async';
+import 'dart:math';
+
+import 'package:flutter/material.dart';
+import 'package:just_audio/just_audio.dart';
+import 'package:melune/bili/bili_client.dart';
+import 'package:melune/bili/models.dart';
+
+enum PlaybackMode { sequential, shuffle, repeatOne, repeatAll }
+
+extension PlaybackModeX on PlaybackMode {
+  String get label => switch (this) {
+        PlaybackMode.sequential => '顺序播放',
+        PlaybackMode.shuffle => '随机播放',
+        PlaybackMode.repeatOne => '单曲循环',
+        PlaybackMode.repeatAll => '列表循环',
+      };
+
+  IconData get icon => switch (this) {
+        PlaybackMode.sequential => Icons.repeat_rounded,
+        PlaybackMode.shuffle => Icons.shuffle_rounded,
+        PlaybackMode.repeatOne => Icons.repeat_one_rounded,
+        PlaybackMode.repeatAll => Icons.repeat_rounded,
+      };
+
+  bool get emphasized => this != PlaybackMode.sequential;
+}
+
+class PlaybackStore extends ChangeNotifier {
+  PlaybackStore({required this.bili});
+
+  final BiliClient bili;
+
+  final List<MeluneTrack> _queue = [];
+  final List<MeluneLyricLine> _lyrics = [];
+  AudioPlayer? _player;
+  StreamSubscription<Duration>? _positionSub;
+  StreamSubscription<PlayerState>? _stateSub;
+  StreamSubscription<Duration?>? _durationSub;
+
+  int _index = 0;
+  var _playing = false;
+  var _loading = false;
+  var _nowPlayingOpen = false;
+  var _playlistOpen = false;
+  var _lyricsExpanded = false;
+  var _mode = PlaybackMode.sequential;
+  var _position = Duration.zero;
+  var _duration = Duration.zero;
+  var _volume = 0.8;
+  String? _error;
+  final List<MeluneTrack> _recent = [];
+  final Map<String, MeluneTrack> _likedTracks = {};
+  final List<MeluneAudioQuality> _qualities = [];
+  var _preferredQualityId = 0;
+  var _selectedQualityId = 0;
+  final _random = Random();
+
+  MeluneTrack? get track => _queue.isEmpty ? null : _queue[_index];
+  List<MeluneTrack> get queue => List.unmodifiable(_queue);
+  List<MeluneLyricLine> get lyrics => List.unmodifiable(_lyrics);
+  List<MeluneTrack> get recentTracks => List.unmodifiable(_recent);
+  List<MeluneTrack> get likedTracks =>
+      List.unmodifiable(_likedTracks.values);
+  bool get playing => _playing;
+  bool get loading => _loading;
+  bool get liked => isLiked(track);
+  bool get nowPlayingOpen => _nowPlayingOpen;
+  bool get playlistOpen => _playlistOpen;
+  bool get lyricsExpanded => _lyricsExpanded;
+  int get currentIndex => _index;
+  PlaybackMode get playbackMode => _mode;
+  bool get shuffle => _mode == PlaybackMode.shuffle;
+  bool get repeatOne => _mode == PlaybackMode.repeatOne;
+  Duration get position => _position;
+  Duration get duration {
+    if (_duration > Duration.zero) {
+      return _duration;
+    }
+    return track?.duration ?? Duration.zero;
+  }
+
+  double get volume => _volume;
+  String? get error => _error;
+  List<MeluneAudioQuality> get qualities => List.unmodifiable(_qualities);
+  int get selectedQualityId => _selectedQualityId;
+  MeluneAudioQuality? get currentQuality {
+    for (final item in _qualities) {
+      if (item.id == _selectedQualityId) {
+        return item;
+      }
+    }
+    return _qualities.isEmpty ? null : _qualities.first;
+  }
+
+  String get qualityLabel => currentQuality?.label ?? '音质';
+
+  String get displayTitle {
+    final current = track;
+    if (current == null) {
+      return '未在播放';
+    }
+    final cleaned = bili.cleanTitle(current.title);
+    return cleaned.isEmpty ? current.title : cleaned;
+  }
+
+  bool isLiked(MeluneTrack? item) {
+    return item != null && _likedTracks.containsKey(item.id);
+  }
+
+  int get activeLyricIndex {
+    if (_lyrics.isEmpty) {
+      return -1;
+    }
+    var index = 0;
+    for (var i = 0; i < _lyrics.length; i++) {
+      if (_position >= _lyrics[i].from) {
+        index = i;
+      } else {
+        break;
+      }
+    }
+    return index;
+  }
+
+  Future<void> playTracks(List<MeluneTrack> tracks, {int start = 0}) async {
+    if (tracks.isEmpty) {
+      return;
+    }
+    _queue
+      ..clear()
+      ..addAll(tracks);
+    _index = start.clamp(0, _queue.length - 1);
+    await _startCurrent();
+  }
+
+  Future<void> playTrack(MeluneTrack item) {
+    return playTracks([item]);
+  }
+
+  int enqueueTracks(List<MeluneTrack> tracks) {
+    if (tracks.isEmpty) {
+      return 0;
+    }
+    var added = 0;
+    for (final item in tracks) {
+      if (queueIndexOf(item) >= 0) {
+        continue;
+      }
+      _queue.add(item);
+      added++;
+    }
+    if (added > 0) {
+      notifyListeners();
+    }
+    return added;
+  }
+
+  int enqueueAlbum(List<MeluneTrack> tracks) => enqueueTracks(tracks);
+
+  bool isQueued(MeluneTrack? item) => queueIndexOf(item) >= 0;
+
+  int queueIndexOf(MeluneTrack? item) {
+    if (item == null) {
+      return -1;
+    }
+    return _queue.indexWhere((entry) => _sameTrack(entry, item));
+  }
+
+  Future<void> toggleQueued(MeluneTrack item) async {
+    final index = queueIndexOf(item);
+    if (index >= 0) {
+      await removeFromQueue(index);
+      return;
+    }
+    enqueueTracks([item]);
+  }
+
+  Future<void> removeFromQueue(int index) async {
+    if (index < 0 || index >= _queue.length) {
+      return;
+    }
+    if (_queue.length == 1) {
+      await clearQueue();
+      return;
+    }
+    final removingCurrent = index == _index;
+    _queue.removeAt(index);
+    if (index < _index) {
+      _index -= 1;
+    } else if (_index >= _queue.length) {
+      _index = _queue.length - 1;
+    }
+    if (removingCurrent && _player != null) {
+      await _startCurrent();
+      return;
+    }
+    notifyListeners();
+  }
+
+  Future<void> clearQueue() async {
+    _queue.clear();
+    _index = 0;
+    _playing = false;
+    _loading = false;
+    _lyrics.clear();
+    _position = Duration.zero;
+    _duration = Duration.zero;
+    _error = null;
+    _qualities.clear();
+    _selectedQualityId = 0;
+    await _player?.stop();
+    notifyListeners();
+  }
+
+  Future<void> togglePlay() async {
+    if (track == null) {
+      return;
+    }
+    final player = _player;
+    if (player == null) {
+      await _startCurrent();
+      return;
+    }
+    if (_playing) {
+      await player.pause();
+    } else {
+      await player.play();
+    }
+  }
+
+  void toggleLike() {
+    toggleLikeTrack(track);
+  }
+
+  void toggleLikeTrack(MeluneTrack? item) {
+    if (item == null) {
+      return;
+    }
+    if (_likedTracks.containsKey(item.id)) {
+      _likedTracks.remove(item.id);
+    } else {
+      _likedTracks[item.id] = item;
+    }
+    notifyListeners();
+  }
+
+  void openPlaylist() {
+    _playlistOpen = true;
+    _nowPlayingOpen = false;
+    notifyListeners();
+  }
+
+  void closePlaylist() {
+    _playlistOpen = false;
+    notifyListeners();
+  }
+
+  void togglePlaylist() {
+    if (_playlistOpen) {
+      closePlaylist();
+      return;
+    }
+    openPlaylist();
+  }
+
+  void openNowPlaying({bool lyrics = false}) {
+    _nowPlayingOpen = true;
+    _playlistOpen = false;
+    _lyricsExpanded = lyrics;
+    notifyListeners();
+  }
+
+  void closeNowPlaying() {
+    _nowPlayingOpen = false;
+    _lyricsExpanded = false;
+    notifyListeners();
+  }
+
+  void toggleLyricsExpanded() {
+    _lyricsExpanded = !_lyricsExpanded;
+    notifyListeners();
+  }
+
+  void cyclePlaybackMode() {
+    _mode = PlaybackMode.values[(_mode.index + 1) % PlaybackMode.values.length];
+    notifyListeners();
+  }
+
+  Future<void> seek(Duration value) async {
+    final total = duration.inMilliseconds;
+    _position = Duration(milliseconds: value.inMilliseconds.clamp(0, total));
+    notifyListeners();
+    await _player?.seek(_position);
+  }
+
+  Future<void> setVolume(double value) async {
+    _volume = value.clamp(0.0, 1.0);
+    await _player?.setVolume(_volume);
+    notifyListeners();
+  }
+
+  Future<void> setQuality(int qualityId) async {
+    if (track == null || (qualityId == _selectedQualityId && qualityId != 0)) {
+      _preferredQualityId = qualityId;
+      notifyListeners();
+      return;
+    }
+    _preferredQualityId = qualityId;
+    await _startCurrent(
+      resumeAt: _position,
+      keepLyrics: true,
+      autoplay: _playing,
+    );
+  }
+
+  Future<void> next() async {
+    if (_queue.isEmpty) {
+      return;
+    }
+    if (shuffle && _queue.length > 1) {
+      _index = _shuffledIndex();
+    } else {
+      _index = (_index + 1) % _queue.length;
+    }
+    await _startCurrent();
+  }
+
+  Future<void> _advanceFromCompletion() async {
+    if (_queue.isEmpty) {
+      return;
+    }
+    if (_mode == PlaybackMode.repeatOne) {
+      await _restartCurrent();
+      return;
+    }
+    if (_mode == PlaybackMode.sequential && _index >= _queue.length - 1) {
+      await _player?.pause();
+      return;
+    }
+    await next();
+  }
+
+  Future<void> previous() async {
+    if (_queue.isEmpty) {
+      return;
+    }
+    if (_position > const Duration(seconds: 3)) {
+      await seek(Duration.zero);
+      return;
+    }
+    if (shuffle && _queue.length > 1) {
+      _index = _shuffledIndex();
+    } else {
+      _index = (_index - 1 + _queue.length) % _queue.length;
+    }
+    await _startCurrent();
+  }
+
+  Future<void> playAt(int index) async {
+    if (index < 0 || index >= _queue.length) {
+      return;
+    }
+    _index = index;
+    await _startCurrent();
+  }
+
+  Future<void> _startCurrent({
+    Duration? resumeAt,
+    bool keepLyrics = false,
+    bool autoplay = true,
+  }) async {
+    final current = track;
+    if (current == null) {
+      return;
+    }
+    _loading = true;
+    _error = null;
+    if (!keepLyrics) {
+      _lyrics.clear();
+      _position = Duration.zero;
+      _qualities.clear();
+      _selectedQualityId = 0;
+    }
+    _duration = current.duration;
+    _playing = false;
+    notifyListeners();
+    try {
+      var playableTrack = current;
+      if (_queue.length == 1 && current.cid == 0 && current.bvid.isNotEmpty) {
+        final expanded = await bili.videoPages(current.bvid);
+        if (expanded.length > 1) {
+          _queue
+            ..clear()
+            ..addAll(expanded);
+          _index = 0;
+          playableTrack = expanded.first;
+        } else if (expanded.isNotEmpty) {
+          playableTrack = expanded.first;
+          _queue[0] = playableTrack;
+        }
+      }
+      final extracted = await bili.extractAudio(
+        playableTrack,
+        qualityId: _preferredQualityId,
+      );
+      final playable = extracted.track;
+      _qualities
+        ..clear()
+        ..addAll(extracted.qualities);
+      _selectedQualityId = extracted.selectedId;
+      _queue[_index] = playable.copyWith(
+        title: playable.title.isEmpty ? current.title : playable.title,
+        albumTitle: playable.albumTitle.isEmpty ? current.albumTitle : playable.albumTitle,
+      );
+      final url = playable.audioUrl.isEmpty
+          ? ''
+          : await bili.proxyUrl(playable.audioUrl);
+      if (url.isEmpty) {
+        throw Exception('没有可播放的音频地址');
+      }
+      final player = await _ensurePlayer();
+      await player.setUrl(url);
+      await player.setVolume(_volume);
+      if (resumeAt != null && resumeAt > Duration.zero) {
+        await player.seek(resumeAt);
+        _position = resumeAt;
+      }
+      if (autoplay) {
+        await player.play();
+      }
+      _remember(playable);
+      if (!keepLyrics) {
+        unawaited(_loadLyrics(_queue[_index]));
+      }
+    } catch (err) {
+      _error = err.toString().replaceFirst('Exception: ', '');
+      _playing = false;
+    } finally {
+      _loading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> _loadLyrics(MeluneTrack current) async {
+    try {
+      final lines = await bili.officialLyrics(current.bvid, current.cid);
+      if (track?.id != current.id) {
+        return;
+      }
+      _lyrics
+        ..clear()
+        ..addAll(lines);
+      notifyListeners();
+    } catch (_) {
+      // 没有官方字幕时保持空列表，界面会提示清洗后的歌名。
+    }
+  }
+
+  void _remember(MeluneTrack current) {
+    _recent.removeWhere((item) => item.id == current.id || item.bvid == current.bvid);
+    _recent.insert(0, current);
+    if (_recent.length > 20) {
+      _recent.removeLast();
+    }
+  }
+
+  Future<AudioPlayer> _ensurePlayer() async {
+    final existing = _player;
+    if (existing != null) {
+      return existing;
+    }
+    final player = AudioPlayer();
+    _player = player;
+    _positionSub = player.positionStream.listen((value) {
+      if (value <= Duration.zero &&
+          _playing &&
+          _position > const Duration(seconds: 2)) {
+        return;
+      }
+      _position = value;
+      notifyListeners();
+    });
+    _durationSub = player.durationStream.listen((value) {
+      if (value != null && value > Duration.zero) {
+        _duration = value;
+        notifyListeners();
+      }
+    });
+    _stateSub = player.playerStateStream.listen((state) {
+      _playing = state.playing;
+      if (state.processingState == ProcessingState.completed) {
+        unawaited(_advanceFromCompletion());
+      }
+      notifyListeners();
+    });
+    return player;
+  }
+
+  Future<void> _restartCurrent() async {
+    await _player?.seek(Duration.zero);
+    await _player?.play();
+  }
+
+  int _shuffledIndex() {
+    if (_queue.length <= 1) {
+      return _index;
+    }
+    var nextIndex = _random.nextInt(_queue.length);
+    while (nextIndex == _index) {
+      nextIndex = _random.nextInt(_queue.length);
+    }
+    return nextIndex;
+  }
+
+  bool _sameTrack(MeluneTrack a, MeluneTrack b) {
+    if (a.id == b.id) {
+      return true;
+    }
+    if (a.bvid.isEmpty || a.bvid != b.bvid) {
+      return false;
+    }
+    return a.cid == 0 || b.cid == 0 || a.cid == b.cid;
+  }
+
+  @override
+  void dispose() {
+    unawaited(_positionSub?.cancel());
+    unawaited(_stateSub?.cancel());
+    unawaited(_durationSub?.cancel());
+    unawaited(_player?.dispose());
+    super.dispose();
+  }
+}
+
+class PlaybackScope extends InheritedNotifier<PlaybackStore> {
+  const PlaybackScope({
+    super.key,
+    required PlaybackStore store,
+    required super.child,
+  }) : super(notifier: store);
+
+  static PlaybackStore of(BuildContext context) {
+    final scope = context.dependOnInheritedWidgetOfExactType<PlaybackScope>();
+    assert(scope != null, 'PlaybackScope not found');
+    return scope!.notifier!;
+  }
+
+  static PlaybackStore read(BuildContext context) {
+    final scope = context.getInheritedWidgetOfExactType<PlaybackScope>();
+    assert(scope != null, 'PlaybackScope not found');
+    return scope!.notifier!;
+  }
+}
