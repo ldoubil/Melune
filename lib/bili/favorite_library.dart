@@ -202,8 +202,22 @@ class FavoriteLibrary extends ChangeNotifier {
     if (snapshot.isEmpty) {
       return;
     }
-    final updated = await Future.wait([
-      for (final folder in snapshot) _hydrateFolder(folder, force: force),
+    final updated = List<MeluneFavoriteFolder>.from(snapshot);
+    var cursor = 0;
+    Future<void> worker() async {
+      while (true) {
+        final index = cursor;
+        cursor += 1;
+        if (index >= snapshot.length || gen != _hydrateGen) {
+          return;
+        }
+        updated[index] = await _hydrateFolder(snapshot[index], force: force);
+      }
+    }
+
+    const parallelism = 3;
+    await Future.wait([
+      for (var i = 0; i < parallelism && i < snapshot.length; i++) worker(),
     ]);
     if (gen != _hydrateGen) {
       return;
@@ -216,7 +230,7 @@ class FavoriteLibrary extends ChangeNotifier {
     MeluneFavoriteFolder folder, {
     required bool force,
   }) async {
-    if (!force && folder.mediaCount > 0 && folder.coverUrl.isNotEmpty) {
+    if (folder.mediaCount > 0 && folder.coverUrl.isNotEmpty) {
       return folder;
     }
     try {

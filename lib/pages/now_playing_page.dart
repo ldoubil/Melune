@@ -23,6 +23,7 @@ class _NowPlayingGateState extends State<NowPlayingGate> {
   PlaybackStore? _store;
   PageRoute<void>? _route;
   var _pushing = false;
+  var _open = false;
 
   @override
   void didChangeDependencies() {
@@ -43,6 +44,11 @@ class _NowPlayingGateState extends State<NowPlayingGate> {
   }
 
   void _onStore() {
+    final open = _store?.nowPlayingOpen ?? false;
+    if (open == _open) {
+      return;
+    }
+    _open = open;
     _scheduleSync();
   }
 

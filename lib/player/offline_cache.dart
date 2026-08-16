@@ -5,7 +5,6 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:melune/bili/bili_client.dart';
 import 'package:melune/bili/models.dart';
-import 'package:melune/player/cover_cache.dart';
 import 'package:melune/settings/app_settings.dart';
 
 class OfflineJob {
@@ -219,7 +218,6 @@ class OfflineCache extends ChangeNotifier {
       }
       _entries[key] = OfflineEntry(track: track, filePath: file.path);
       _jobs.remove(key);
-      unawaited(CoverCache.instance.ensure(track.coverUrl));
       await _persist();
       await enforceLimit();
       notifyListeners();

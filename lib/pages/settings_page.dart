@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:melune/accounts/account_store.dart';
 import 'package:melune/accounts/accounts_popup.dart';
-import 'package:melune/player/cover_cache.dart';
 import 'package:melune/player/equalizer.dart';
 import 'package:melune/player/playback_store.dart';
 import 'package:melune/settings/app_settings.dart';
@@ -35,7 +34,6 @@ class _SettingsPageState extends State<SettingsPage> {
   late final TextEditingController _proxyHost;
   late final TextEditingController _proxyPort;
   late final TextEditingController _offlineDir;
-  var _coverBytes = 0;
   var _offlineBytes = 0;
   String? _capturingShortcut;
 
@@ -51,7 +49,6 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _coverBytes = CoverCache.instance.usedBytes();
     _offlineBytes = PlaybackScope.read(context).offline.usedBytes();
   }
 
@@ -66,7 +63,6 @@ class _SettingsPageState extends State<SettingsPage> {
 
   void _refreshCacheSizes() {
     setState(() {
-      _coverBytes = CoverCache.instance.usedBytes();
       _offlineBytes = PlaybackScope.read(context).offline.usedBytes();
     });
   }
@@ -420,11 +416,6 @@ class _SettingsPageState extends State<SettingsPage> {
                   title: '离线占用',
                   subtitle: _formatBytes(_offlineBytes),
                 ),
-                _SettingsTile(
-                  icon: Icons.image_outlined,
-                  title: '封面缓存',
-                  subtitle: _formatBytes(_coverBytes),
-                ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
                   child: Row(
@@ -436,16 +427,6 @@ class _SettingsPageState extends State<SettingsPage> {
                                 _openDir(settings.effectiveOfflineDir),
                               ),
                         child: const Text('打开离线目录'),
-                      ),
-                      const SizedBox(width: 8),
-                      TextButton(
-                        onPressed: () async {
-                          await CoverCache.instance.clearAll();
-                          if (mounted) {
-                            _refreshCacheSizes();
-                          }
-                        },
-                        child: const Text('清封面缓存'),
                       ),
                     ],
                   ),

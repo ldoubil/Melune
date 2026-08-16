@@ -12,7 +12,6 @@ import 'package:melune/bili/favorite_library.dart';
 import 'package:melune/bili/models.dart';
 import 'package:melune/lyrics/catalog.dart';
 import 'package:melune/player/media_handler.dart';
-import 'package:melune/player/cover_cache.dart';
 import 'package:melune/player/equalizer.dart';
 import 'package:melune/player/offline_cache.dart';
 import 'package:melune/settings/app_settings.dart';
@@ -43,7 +42,6 @@ class PlaybackStore extends ChangeNotifier implements MediaSessionHost {
   PlaybackStore({required this.bili, this.media, this.windows, this.persistDir})
     : favorites = FavoriteLibrary(bili: bili),
       offline = OfflineCache(bili: bili, persistDir: persistDir) {
-    CoverCache.instance.attach(persistDir);
     media?.attach(this);
     windows?.attach(this);
     attachDesktopLyricHost(
@@ -101,6 +99,7 @@ class PlaybackStore extends ChangeNotifier implements MediaSessionHost {
   String _sessionSig = '';
   var _ducked = false;
   var _pausedForFocus = false;
+  var _positionNotifyAt = 0;
   final _random = Random();
   Timer? _persistTimer;
   _PlaybackLifecycle? _lifecycle;
@@ -933,8 +932,15 @@ class PlaybackStore extends ChangeNotifier implements MediaSessionHost {
           _position > const Duration(seconds: 2)) {
         return;
       }
+      final jumped =
+          (value - _position).inMilliseconds.abs() > 400;
       _position = value;
       _pushDesktopLyric();
+      final now = DateTime.now().millisecondsSinceEpoch;
+      if (!jumped && now - _positionNotifyAt < 120) {
+        return;
+      }
+      _positionNotifyAt = now;
       notifyListeners();
     });
     _durationSub = player.durationStream.listen((value) {

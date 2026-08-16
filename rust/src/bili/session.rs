@@ -506,9 +506,14 @@ impl Session {
     }
 
     pub fn favorite_folders(&mut self, mid: i64, rid: i64) -> Result<Value, String> {
-        let mut list = self.created_folder_pages(mid)?;
-        if list.is_empty() {
-            list = json_array_list(&self.created_folder_list_all(mid, 0)?);
+        let listed = self.created_folder_list_all(mid, 0)?;
+        let declared = listed["count"].as_u64().unwrap_or(0) as usize;
+        let mut list = json_array_list(&listed);
+        if list.is_empty() || (declared > 0 && list.len() < declared) {
+            let paged = self.created_folder_pages(mid)?;
+            if paged.len() > list.len() {
+                list = paged;
+            }
         }
         if rid > 0 {
             let flagged = json_array_list(&self.created_folder_list_all(mid, rid)?);

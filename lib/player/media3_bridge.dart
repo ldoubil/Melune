@@ -1,8 +1,10 @@
 import 'dart:async';
 
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
-import 'package:melune/player/cover_cache.dart';
+import 'package:melune/player/cover_fetch.dart';
 import 'package:melune/player/media_handler.dart';
 
 /// Android Media3 会话门面：只在 [MediaSessionHost.sessionEpoch] 变化时推一次状态，
@@ -55,7 +57,7 @@ class Media3NowPlayingBridge implements NowPlayingBridge {
     if (!coverChanged || cover.isEmpty) {
       return;
     }
-    final path = await _cacheCover(cover);
+    final path = await _artworkFile(cover);
     if (_coverUrl != cover) {
       return;
     }
@@ -98,13 +100,20 @@ class Media3NowPlayingBridge implements NowPlayingBridge {
     };
   }
 
-  Future<String?> _cacheCover(String url) async {
+  Future<String?> _artworkFile(String url) async {
     if (url.isEmpty) {
       return null;
     }
     try {
-      final file = await CoverCache.instance.ensure(url);
-      return file?.path;
+      final bytes = await fetchCoverBytes(url);
+      if (bytes == null || bytes.isEmpty) {
+        return null;
+      }
+      final file = File(
+        '${Directory.systemTemp.path}${Platform.pathSeparator}melune_art.jpg',
+      );
+      await file.writeAsBytes(bytes, flush: true);
+      return file.path;
     } catch (_) {
       return null;
     }

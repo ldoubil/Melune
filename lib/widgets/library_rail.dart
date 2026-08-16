@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:melune/accounts/account_store.dart';
 import 'package:melune/bili/models.dart';
+import 'package:melune/player/playback_select.dart';
 import 'package:melune/player/playback_store.dart';
 import 'package:melune/theme/tokens.dart';
 import 'package:melune/widgets/skeleton.dart';
@@ -116,16 +117,23 @@ class _LibraryRailState extends State<LibraryRail> {
   Widget build(BuildContext context) {
     final tokens = context.tokens;
     final loggedIn = AccountScope.of(context).isLoggedIn;
-    final player = PlaybackScope.of(context);
+    final player = PlaybackScope.read(context);
     return ListenableBuilder(
-      listenable: Listenable.merge([player, player.offline, player.favorites]),
+      listenable: Listenable.merge([player.offline, player.favorites]),
       builder: (context, _) {
-        final albums = libraryAlbums(
-          folders: player.favorites.folders,
-          recent: player.recentTracks,
-          offlineCount: player.offline.cachedCount,
-        );
-        return Column(
+        return PlaybackSelect(
+          player: player,
+          selector: (store) => (
+            store.recentTracks.length,
+            store.recentTracks.isEmpty ? '' : store.recentTracks.first.id,
+          ),
+          builder: (context, store) {
+            final albums = libraryAlbums(
+              folders: store.favorites.folders,
+              recent: store.recentTracks,
+              offlineCount: store.offline.cachedCount,
+            );
+            return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Padding(
@@ -191,6 +199,8 @@ class _LibraryRailState extends State<LibraryRail> {
               ),
             ),
           ],
+        );
+          },
         );
       },
     );

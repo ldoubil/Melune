@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:melune/accounts/account_store.dart';
+import 'package:melune/player/playback_select.dart';
 import 'package:melune/player/playback_store.dart';
 import 'package:melune/theme/tokens.dart';
 import 'package:melune/widgets/album_card.dart';
@@ -93,17 +94,23 @@ class _FavoritesPageState extends State<FavoritesPage> {
 
     return ListenableBuilder(
       listenable: Listenable.merge([
-        PlaybackScope.of(context),
         PlaybackScope.read(context).offline,
         PlaybackScope.read(context).favorites,
       ]),
       builder: (context, _) {
         final player = PlaybackScope.read(context);
-        final albums = libraryAlbums(
-          folders: player.favorites.folders,
-          recent: player.recentTracks,
-          offlineCount: player.offline.cachedCount,
-        );
+        return PlaybackSelect(
+          player: player,
+          selector: (store) => (
+            store.recentTracks.length,
+            store.recentTracks.isEmpty ? '' : store.recentTracks.first.id,
+          ),
+          builder: (context, store) {
+            final albums = libraryAlbums(
+              folders: store.favorites.folders,
+              recent: store.recentTracks,
+              offlineCount: store.offline.cachedCount,
+            );
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -195,6 +202,8 @@ class _FavoritesPageState extends State<FavoritesPage> {
                 ),
               ),
           ],
+        );
+          },
         );
       },
     );

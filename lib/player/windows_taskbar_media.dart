@@ -4,7 +4,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
-import 'package:melune/player/cover_cache.dart';
+import 'package:melune/player/cover_fetch.dart';
 import 'package:melune/player/media_handler.dart';
 
 class WindowsTaskbarMedia implements NowPlayingBridge {
@@ -93,16 +93,8 @@ class WindowsTaskbarMedia implements NowPlayingBridge {
     }
   }
 
-  Future<Uint8List?> _downloadCover(String url) async {
-    try {
-      final file = await CoverCache.instance.ensure(url);
-      if (file == null) {
-        return null;
-      }
-      return file.readAsBytes();
-    } catch (_) {
-      return null;
-    }
+  Future<Uint8List?> _downloadCover(String url) {
+    return fetchCoverBytes(url);
   }
 
   Future<void> _onMethod(MethodCall call) async {
