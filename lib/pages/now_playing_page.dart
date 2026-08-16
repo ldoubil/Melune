@@ -147,7 +147,9 @@ class NowPlayingPage extends StatefulWidget {
 class _NowPlayingPageState extends State<NowPlayingPage> {
   PlaybackStore? _player;
   var _expanded = false;
+  var _playing = false;
   String? _trackId;
+  String? _error;
   PageController? _pager;
 
   PlaybackStore get player => _player!;
@@ -162,7 +164,9 @@ class _NowPlayingPageState extends State<NowPlayingPage> {
     _player?.removeListener(_onPlayer);
     _player = store;
     _expanded = store.lyricsExpanded;
+    _playing = store.playing;
     _trackId = store.track?.id;
+    _error = store.error;
     _pager ??= PageController(initialPage: store.lyricsExpanded ? 1 : 0);
     store.addListener(_onPlayer);
   }
@@ -177,12 +181,19 @@ class _NowPlayingPageState extends State<NowPlayingPage> {
   void _onPlayer() {
     final expanded = player.lyricsExpanded;
     final trackId = player.track?.id;
-    if (expanded == _expanded && trackId == _trackId) {
+    final playing = player.playing;
+    final error = player.error;
+    if (expanded == _expanded &&
+        trackId == _trackId &&
+        playing == _playing &&
+        error == _error) {
       return;
     }
     setState(() {
       _expanded = expanded;
       _trackId = trackId;
+      _playing = playing;
+      _error = error;
     });
     final pager = _pager;
     final target = expanded ? 1 : 0;
@@ -503,7 +514,7 @@ class _SeekRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: player,
+      listenable: player.progressListenable,
       builder: (context, _) {
         final tokens = context.tokens;
         final progress = player.duration.inMilliseconds == 0

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:melune/player/playback_store.dart';
 import 'package:melune/theme/tokens.dart';
+import 'package:melune/widgets/browse_scope.dart';
 import 'package:melune/widgets/track_cache_button.dart';
 import 'package:melune/widgets/track_tile.dart';
 
@@ -10,7 +11,7 @@ class OfflinePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
-    final player = PlaybackScope.of(context);
+    final player = PlaybackScope.read(context);
     return ListenableBuilder(
       listenable: player.offline,
       builder: (context, _) {
@@ -29,7 +30,7 @@ class OfflinePage extends StatelessWidget {
                     IconButton(
                       key: const Key('offline-back'),
                       tooltip: '返回',
-                      onPressed: () => Navigator.of(context).maybePop(),
+                      onPressed: () => popContent(context),
                       icon: Icon(
                         Icons.arrow_back_rounded,
                         color: tokens.colorContrast,

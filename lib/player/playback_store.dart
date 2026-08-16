@@ -41,7 +41,9 @@ extension PlaybackModeX on PlaybackMode {
 class PlaybackStore extends ChangeNotifier implements MediaSessionHost {
   PlaybackStore({required this.bili, this.media, this.windows, this.persistDir})
     : favorites = FavoriteLibrary(bili: bili),
-      offline = OfflineCache(bili: bili, persistDir: persistDir) {
+      offline = OfflineCache(bili: bili, persistDir: persistDir),
+      positionTick = ValueNotifier(0) {
+    progressListenable = Listenable.merge([this, positionTick]);
     media?.attach(this);
     windows?.attach(this);
     attachDesktopLyricHost(
@@ -58,6 +60,8 @@ class PlaybackStore extends ChangeNotifier implements MediaSessionHost {
   final BiliClient bili;
   final FavoriteLibrary favorites;
   final OfflineCache offline;
+  final ValueNotifier<int> positionTick;
+  late final Listenable progressListenable;
   final NowPlayingBridge? media;
   final NowPlayingBridge? windows;
   final String? persistDir;
@@ -100,6 +104,7 @@ class PlaybackStore extends ChangeNotifier implements MediaSessionHost {
   var _ducked = false;
   var _pausedForFocus = false;
   var _positionNotifyAt = 0;
+  var _closed = false;
   final _random = Random();
   Timer? _persistTimer;
   _PlaybackLifecycle? _lifecycle;
@@ -924,8 +929,13 @@ class PlaybackStore extends ChangeNotifier implements MediaSessionHost {
     await _applySkipSilence();
     unawaited(MeluneEqualizer.applyFromSettings());
     _positionSub = player.positionStream.listen((value) {
+      if (_closed) {
+        return;
+      }
+      var loadingCleared = false;
       if (_loading && value > Duration.zero) {
         _loading = false;
+        loadingCleared = true;
       }
       if (value <= Duration.zero &&
           _playing &&
@@ -937,11 +947,16 @@ class PlaybackStore extends ChangeNotifier implements MediaSessionHost {
       _position = value;
       _pushDesktopLyric();
       final now = DateTime.now().millisecondsSinceEpoch;
-      if (!jumped && now - _positionNotifyAt < 120) {
-        return;
+      if (jumped || now - _positionNotifyAt >= 120) {
+        _positionNotifyAt = now;
+        final ms = value.inMilliseconds;
+        if (positionTick.value != ms) {
+          positionTick.value = ms;
+        }
       }
-      _positionNotifyAt = now;
-      notifyListeners();
+      if (loadingCleared) {
+        notifyListeners();
+      }
     });
     _durationSub = player.durationStream.listen((value) {
       if (value != null && value > Duration.zero) {
@@ -1149,6 +1164,7 @@ class PlaybackStore extends ChangeNotifier implements MediaSessionHost {
 
   @override
   void dispose() {
+    _closed = true;
     media?.detach();
     windows?.detach();
     if (_desktopLyricOpen) {
@@ -1166,6 +1182,7 @@ class PlaybackStore extends ChangeNotifier implements MediaSessionHost {
     unawaited(_interruptionSub?.cancel());
     unawaited(_noisySub?.cancel());
     unawaited(_player?.dispose());
+    positionTick.dispose();
     super.dispose();
   }
 }
@@ -1194,22 +1211,28 @@ class _PlaybackLifecycle with WidgetsBindingObserver {
   }
 }
 
-class PlaybackScope extends InheritedNotifier<PlaybackStore> {
+class PlaybackScope extends InheritedWidget {
   const PlaybackScope({
     super.key,
-    required PlaybackStore store,
+    required this.store,
     required super.child,
-  }) : super(notifier: store);
+  });
+
+  final PlaybackStore store;
 
   static PlaybackStore of(BuildContext context) {
     final scope = context.dependOnInheritedWidgetOfExactType<PlaybackScope>();
     assert(scope != null, 'PlaybackScope not found');
-    return scope!.notifier!;
+    return scope!.store;
   }
 
   static PlaybackStore read(BuildContext context) {
     final scope = context.getInheritedWidgetOfExactType<PlaybackScope>();
     assert(scope != null, 'PlaybackScope not found');
-    return scope!.notifier!;
+    return scope!.store;
   }
+
+  @override
+  bool updateShouldNotify(PlaybackScope oldWidget) =>
+      !identical(oldWidget.store, store);
 }

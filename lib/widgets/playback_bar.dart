@@ -200,7 +200,7 @@ class _Transport extends StatelessWidget {
         ),
         if (!compact)
           ListenableBuilder(
-            listenable: player,
+            listenable: player.progressListenable,
             builder: (context, _) {
               final progress = player.duration.inMilliseconds == 0
                   ? 0.0

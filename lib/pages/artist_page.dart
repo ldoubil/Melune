@@ -4,6 +4,7 @@ import 'package:melune/bili/bili_scope.dart';
 import 'package:melune/bili/models.dart';
 import 'package:melune/theme/tokens.dart';
 import 'package:melune/widgets/album_card.dart';
+import 'package:melune/widgets/browse_scope.dart';
 import 'package:melune/widgets/skeleton.dart';
 
 class ArtistPage extends StatefulWidget {
@@ -130,7 +131,7 @@ class _ArtistPageState extends State<ArtistPage> {
                 IconButton(
                   key: const Key('artist-back'),
                   tooltip: '返回',
-                  onPressed: () => Navigator.of(context).maybePop(),
+                  onPressed: () => popContent(context),
                   icon: Icon(
                     Icons.arrow_back_rounded,
                     color: tokens.colorContrast,

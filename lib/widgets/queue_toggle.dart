@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:melune/bili/models.dart';
+import 'package:melune/player/playback_select.dart';
 import 'package:melune/player/playback_store.dart';
 import 'package:melune/theme/tokens.dart';
 
@@ -11,16 +12,17 @@ class QueueToggleButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
-    final player = PlaybackScope.of(context);
-    return ListenableBuilder(
-      listenable: player,
-      builder: (context, _) {
-        final queued = player.isQueued(track);
+    final player = PlaybackScope.read(context);
+    return PlaybackSelect(
+      player: player,
+      selector: (store) => store.isQueued(track),
+      builder: (context, store) {
+        final queued = store.isQueued(track);
         return IconButton(
           key: Key('queue-toggle-${track.id}'),
           tooltip: queued ? '移出播放列表' : '加入播放列表',
           visualDensity: VisualDensity.compact,
-          onPressed: () => player.toggleQueued(track),
+          onPressed: () => store.toggleQueued(track),
           icon: Icon(
             queued
                 ? Icons.playlist_add_check_rounded

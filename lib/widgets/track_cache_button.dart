@@ -16,7 +16,7 @@ class TrackCacheButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
-    final player = PlaybackScope.of(context);
+    final player = PlaybackScope.read(context);
     return ListenableBuilder(
       listenable: player.offline,
       builder: (context, _) {
@@ -81,7 +81,7 @@ class AlbumCacheButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
-    final player = PlaybackScope.of(context);
+    final player = PlaybackScope.read(context);
     return ListenableBuilder(
       listenable: player.offline,
       builder: (context, _) {

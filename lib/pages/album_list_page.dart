@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:melune/bili/models.dart';
 import 'package:melune/theme/tokens.dart';
 import 'package:melune/widgets/album_card.dart';
+import 'package:melune/widgets/browse_scope.dart';
 
 class AlbumListPage extends StatelessWidget {
   const AlbumListPage({super.key, required this.title, required this.albums});
@@ -24,7 +25,7 @@ class AlbumListPage extends StatelessWidget {
                 IconButton(
                   key: const Key('album-list-back'),
                   tooltip: '返回',
-                  onPressed: () => Navigator.of(context).maybePop(),
+                  onPressed: () => popContent(context),
                   icon: Icon(
                     Icons.arrow_back_rounded,
                     color: tokens.colorContrast,

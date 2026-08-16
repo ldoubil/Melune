@@ -70,7 +70,7 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final player = PlaybackScope.of(context);
+    final player = PlaybackScope.read(context);
     final accounts = AccountScope.of(context);
     return ListenableBuilder(
       listenable: Listenable.merge([

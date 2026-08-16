@@ -1,9 +1,12 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:melune/bili/models.dart';
 import 'package:melune/pages/offline_page.dart';
 import 'package:melune/pages/album_list_page.dart';
 import 'package:melune/pages/album_page.dart';
 import 'package:melune/pages/artist_page.dart';
+import 'package:melune/player/playback_select.dart';
+import 'package:melune/player/playback_store.dart';
 
 class BrowseScope extends InheritedWidget {
   const BrowseScope({
@@ -34,6 +37,26 @@ class BrowseScope extends InheritedWidget {
 
   @override
   bool updateShouldNotify(BrowseScope oldWidget) => false;
+}
+
+void popContent(BuildContext context) {
+  final route = ModalRoute.of(context);
+  if (route == null || route.isFirst) {
+    return;
+  }
+  Navigator.of(context).pop();
+}
+
+bool contentNavigatorHandlesSystemPop(PlaybackStore store) {
+  if (store.nowPlayingOpen || store.playlistOpen) {
+    return false;
+  }
+  if (kIsWeb) {
+    return true;
+  }
+  // Android 系统返回会先问最内层 Navigator。歌单页若自己 pop，正在播放还在上面，
+  // 看起来就要返回两次才关掉歌词。
+  return defaultTargetPlatform != TargetPlatform.android;
 }
 
 void openArtistFromTrack(BuildContext context, MeluneTrack track) {
@@ -167,33 +190,45 @@ class ContentNavigatorState extends State<ContentNavigator> {
 
   @override
   Widget build(BuildContext context) {
+    final player = PlaybackScope.read(context);
     return BrowseScope(
       openAlbum: _openAlbum,
       openAlbumList: _openAlbumList,
       openArtist: _openArtist,
-      child: NotificationListener<NavigationNotification>(
-        onNotification: (_) => true,
-        child: Navigator(
-          pages: [
-            MaterialPage<void>(
-              key: const ValueKey('content-root'),
-              child: widget.child,
+      child: PlaybackSelect(
+        player: player,
+        selector: (store) => (store.nowPlayingOpen, store.playlistOpen),
+        builder: (context, store) {
+          return PopScope(
+            canPop: contentNavigatorHandlesSystemPop(store),
+            child: NotificationListener<NavigationNotification>(
+              onNotification: (_) => true,
+              child: Navigator(
+                pages: [
+                  MaterialPage<void>(
+                    key: const ValueKey('content-root'),
+                    child: widget.child,
+                  ),
+                  for (final entry in _stack) entry.page(),
+                ],
+                onDidRemovePage: (page) {
+                  if (page.key == const ValueKey('content-root')) {
+                    return;
+                  }
+                  final index = _stack.indexWhere(
+                    (entry) => entry.key == page.key,
+                  );
+                  if (index < 0) {
+                    return;
+                  }
+                  setState(() {
+                    _stack.removeAt(index);
+                  });
+                },
+              ),
             ),
-            for (final entry in _stack) entry.page(),
-          ],
-          onDidRemovePage: (page) {
-            if (page.key == const ValueKey('content-root')) {
-              return;
-            }
-            final index = _stack.indexWhere((entry) => entry.key == page.key);
-            if (index < 0) {
-              return;
-            }
-            setState(() {
-              _stack.removeAt(index);
-            });
-          },
-        ),
+          );
+        },
       ),
     );
   }

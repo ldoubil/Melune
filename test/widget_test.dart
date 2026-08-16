@@ -164,6 +164,39 @@ void main() {
     expect(find.byKey(const Key('playback-play')), findsOneWidget);
   });
 
+  testWidgets('system back closes lyrics before the album underneath', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(400, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      MeluneApp(
+        appName: 'Melune · 洛音',
+        greet: ({required String name}) => '你好，$name',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('rank-row-BV1demo1')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('album-page')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('playback-now-playing')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('now-playing-page')), findsOneWidget);
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('now-playing-page')), findsNothing);
+    expect(find.byKey(const Key('album-page')), findsOneWidget);
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('album-page')), findsNothing);
+  });
+
   testWidgets('switches between navigation destinations', (tester) async {
     tester.view.physicalSize = const Size(400, 800);
     tester.view.devicePixelRatio = 1.0;

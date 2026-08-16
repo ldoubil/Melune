@@ -29,7 +29,7 @@ class _KaraokeLyricsState extends State<KaraokeLyrics> {
   @override
   void initState() {
     super.initState();
-    _player.addListener(_onPlayer);
+    _player.progressListenable.addListener(_onPlayer);
     _adoptLines(_player.lyrics.length);
     _active = _player.activeLyricIndex;
     WidgetsBinding.instance.addPostFrameCallback((_) => _centerActive());
@@ -39,8 +39,8 @@ class _KaraokeLyricsState extends State<KaraokeLyrics> {
   void didUpdateWidget(KaraokeLyrics oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.player != widget.player) {
-      oldWidget.player.removeListener(_onPlayer);
-      widget.player.addListener(_onPlayer);
+      oldWidget.player.progressListenable.removeListener(_onPlayer);
+      widget.player.progressListenable.addListener(_onPlayer);
       _adoptLines(widget.player.lyrics.length);
       _active = widget.player.activeLyricIndex;
     }
@@ -49,7 +49,7 @@ class _KaraokeLyricsState extends State<KaraokeLyrics> {
   @override
   void dispose() {
     _resumeFollow?.cancel();
-    _player.removeListener(_onPlayer);
+    _player.progressListenable.removeListener(_onPlayer);
     _controller.dispose();
     super.dispose();
   }

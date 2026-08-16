@@ -129,7 +129,7 @@ class _AlbumPageState extends State<AlbumPage> {
                 IconButton(
                   key: const Key('album-back'),
                   tooltip: '返回',
-                  onPressed: () => Navigator.of(context).maybePop(),
+                  onPressed: () => popContent(context),
                   icon: Icon(
                     Icons.arrow_back_rounded,
                     color: tokens.colorContrast,
