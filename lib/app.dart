@@ -5,8 +5,10 @@ import 'package:melune/bili/bili_client.dart';
 import 'package:melune/bili/bili_scope.dart';
 import 'package:melune/bili/fake_bili_client.dart';
 import 'package:melune/player/playback_store.dart';
+import 'package:melune/settings/app_settings.dart';
 import 'package:melune/shell.dart';
 import 'package:melune/theme/tokens.dart';
+import 'package:melune/widgets/browse_scope.dart';
 import 'package:melune/window/window_controller.dart';
 
 typedef GreetFn = String Function({required String name});
@@ -37,28 +39,48 @@ class MeluneApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final client = bili ?? _defaultBili;
+    final windowCtl = window ?? _defaultWindow;
+    final accountStore = accounts ?? _defaultAccounts;
+    final playbackStore =
+        playback ??
+        (identical(client, _defaultBili)
+            ? _defaultPlayback
+            : PlaybackStore(bili: client));
     return BiliScope(
       client: client,
       child: AccountScope(
-        store: accounts ?? _defaultAccounts,
+        store: accountStore,
         child: PlaybackScope(
-          store: playback ?? _defaultPlayback,
-          child: MaterialApp(
-            title: appName,
-            debugShowCheckedModeBanner: false,
-            theme: buildMeluneTheme(MeluneTokens.light, Brightness.light),
-            darkTheme: buildMeluneTheme(MeluneTokens.dark, Brightness.dark),
-            builder: (context, child) {
-              final app = child ?? const SizedBox.shrink();
-              if (kIsWeb || defaultTargetPlatform != TargetPlatform.windows) {
-                return app;
-              }
-              return ExcludeSemantics(child: app);
-            },
-            home: MeluneShell(
-              appName: appName,
-              greet: greet,
-              window: window ?? _defaultWindow,
+          store: playbackStore,
+          child: RootBrowseScope(
+            child: ListenableBuilder(
+              listenable: AppSettings.instance,
+              child: MeluneShell(
+                appName: appName,
+                greet: greet,
+                window: windowCtl,
+              ),
+              builder: (context, child) {
+                return MaterialApp(
+                  title: appName,
+                  debugShowCheckedModeBanner: false,
+                  theme: buildMeluneTheme(MeluneTokens.light, Brightness.light),
+                  darkTheme: buildMeluneTheme(
+                    MeluneTokens.dark,
+                    Brightness.dark,
+                  ),
+                  themeMode: AppSettings.instance.themeMode,
+                  builder: (context, appChild) {
+                    final app = appChild ?? const SizedBox.shrink();
+                    if (kIsWeb ||
+                        defaultTargetPlatform != TargetPlatform.windows) {
+                      return app;
+                    }
+                    return ExcludeSemantics(child: app);
+                  },
+                  home: child,
+                );
+              },
             ),
           ),
         ),

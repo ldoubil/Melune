@@ -1,3 +1,4 @@
+mod outbound;
 mod proxy;
 mod session;
 pub mod wbi;

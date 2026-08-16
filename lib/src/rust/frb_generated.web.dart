@@ -56,13 +56,13 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   BiliTrack dco_decode_bili_track(dynamic raw);
 
   @protected
+  BiliUpProfile dco_decode_bili_up_profile(dynamic raw);
+
+  @protected
   BiliUser dco_decode_bili_user(dynamic raw);
 
   @protected
   bool dco_decode_bool(dynamic raw);
-
-  @protected
-  double dco_decode_f_64(dynamic raw);
 
   @protected
   int dco_decode_i_32(dynamic raw);
@@ -132,13 +132,13 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   BiliTrack sse_decode_bili_track(SseDeserializer deserializer);
 
   @protected
+  BiliUpProfile sse_decode_bili_up_profile(SseDeserializer deserializer);
+
+  @protected
   BiliUser sse_decode_bili_user(SseDeserializer deserializer);
 
   @protected
   bool sse_decode_bool(SseDeserializer deserializer);
-
-  @protected
-  double sse_decode_f_64(SseDeserializer deserializer);
 
   @protected
   int sse_decode_i_32(SseDeserializer deserializer);
@@ -228,13 +228,13 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_bili_track(BiliTrack self, SseSerializer serializer);
 
   @protected
+  void sse_encode_bili_up_profile(BiliUpProfile self, SseSerializer serializer);
+
+  @protected
   void sse_encode_bili_user(BiliUser self, SseSerializer serializer);
 
   @protected
   void sse_encode_bool(bool self, SseSerializer serializer);
-
-  @protected
-  void sse_encode_f_64(double self, SseSerializer serializer);
 
   @protected
   void sse_encode_i_32(int self, SseSerializer serializer);

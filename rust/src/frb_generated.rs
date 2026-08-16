@@ -38,7 +38,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.12.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 225858282;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -716609069;
 
 // Section: executor
 
@@ -105,6 +105,80 @@ fn wire__crate__api__bili__bili_clean_title_impl(
         },
     )
 }
+fn wire__crate__api__bili__bili_create_favorite_folder_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "bili_create_favorite_folder",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_title = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, String>((move || {
+                    let output_ok = crate::api::bili::bili_create_favorite_folder(api_title)?;
+                    Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
+fn wire__crate__api__bili__bili_deal_favorite_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "bili_deal_favorite",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_rid = <i64>::sse_decode(&mut deserializer);
+            let api_bvid = <String>::sse_decode(&mut deserializer);
+            let api_add_media_ids = <String>::sse_decode(&mut deserializer);
+            let api_del_media_ids = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, String>((move || {
+                    let output_ok = crate::api::bili::bili_deal_favorite(
+                        api_rid,
+                        api_bvid,
+                        api_add_media_ids,
+                        api_del_media_ids,
+                    )?;
+                    Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
 fn wire__crate__api__bili__bili_extract_audio_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -168,10 +242,11 @@ fn wire__crate__api__bili__bili_favorite_folders_impl(
             };
             let mut deserializer =
                 flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_rid = <i64>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| {
                 transform_result_sse::<_, String>((move || {
-                    let output_ok = crate::api::bili::bili_favorite_folders()?;
+                    let output_ok = crate::api::bili::bili_favorite_folders(api_rid)?;
                     Ok(output_ok)
                 })())
             }
@@ -403,6 +478,40 @@ fn wire__crate__api__bili__bili_music_region_impl(
             move |context| {
                 transform_result_sse::<_, String>((move || {
                     let output_ok = crate::api::bili::bili_music_region(api_page)?;
+                    Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
+fn wire__crate__api__bili__bili_music_zone_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "bili_music_zone",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_cate_id = <i64>::sse_decode(&mut deserializer);
+            let api_page = <u32>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, String>((move || {
+                    let output_ok = crate::api::bili::bili_music_zone(api_cate_id, api_page)?;
                     Ok(output_ok)
                 })())
             }
@@ -673,6 +782,73 @@ fn wire__crate__api__bili__bili_season_tracks_impl(
         },
     )
 }
+fn wire__crate__api__bili__bili_user_archives_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "bili_user_archives",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_mid = <i64>::sse_decode(&mut deserializer);
+            let api_page = <u32>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, String>((move || {
+                    let output_ok = crate::api::bili::bili_user_archives(api_mid, api_page)?;
+                    Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
+fn wire__crate__api__bili__bili_user_card_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "bili_user_card",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_mid = <i64>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, String>((move || {
+                    let output_ok = crate::api::bili::bili_user_card(api_mid)?;
+                    Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
 fn wire__crate__api__bili__bili_video_pages_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -727,23 +903,23 @@ fn wire__crate__api__desktop_lyric__desktop_lyric_set_impl(
             };
             let mut deserializer =
                 flutter_rust_bridge::for_generated::SseDeserializer::new(message);
-            let api_visible = <bool>::sse_decode(&mut deserializer);
-            let api_locked = <bool>::sse_decode(&mut deserializer);
-            let api_liked = <bool>::sse_decode(&mut deserializer);
-            let api_cover_url = <String>::sse_decode(&mut deserializer);
-            let api_previous = <String>::sse_decode(&mut deserializer);
-            let api_current = <String>::sse_decode(&mut deserializer);
-            let api_next = <String>::sse_decode(&mut deserializer);
+            let api__visible = <bool>::sse_decode(&mut deserializer);
+            let api__locked = <bool>::sse_decode(&mut deserializer);
+            let api__liked = <bool>::sse_decode(&mut deserializer);
+            let api__cover_url = <String>::sse_decode(&mut deserializer);
+            let api__previous = <String>::sse_decode(&mut deserializer);
+            let api__current = <String>::sse_decode(&mut deserializer);
+            let api__next = <String>::sse_decode(&mut deserializer);
             deserializer.end();
             transform_result_sse::<_, String>((move || {
                 let output_ok = crate::api::desktop_lyric::desktop_lyric_set(
-                    api_visible,
-                    api_locked,
-                    api_liked,
-                    api_cover_url,
-                    api_previous,
-                    api_current,
-                    api_next,
+                    api__visible,
+                    api__locked,
+                    api__liked,
+                    api__cover_url,
+                    api__previous,
+                    api__current,
+                    api__next,
                 )?;
                 Ok(output_ok)
             })())
@@ -866,11 +1042,13 @@ impl SseDecode for crate::api::bili::BiliFavoriteFolder {
         let mut var_title = <String>::sse_decode(deserializer);
         let mut var_mediaCount = <i32>::sse_decode(deserializer);
         let mut var_coverUrl = <String>::sse_decode(deserializer);
+        let mut var_favState = <bool>::sse_decode(deserializer);
         return crate::api::bili::BiliFavoriteFolder {
             id: var_id,
             title: var_title,
             media_count: var_mediaCount,
             cover_url: var_coverUrl,
+            fav_state: var_favState,
         };
     }
 }
@@ -995,6 +1173,26 @@ impl SseDecode for crate::api::bili::BiliTrack {
     }
 }
 
+impl SseDecode for crate::api::bili::BiliUpProfile {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_mid = <i64>::sse_decode(deserializer);
+        let mut var_name = <String>::sse_decode(deserializer);
+        let mut var_face = <String>::sse_decode(deserializer);
+        let mut var_sign = <String>::sse_decode(deserializer);
+        let mut var_fans = <i64>::sse_decode(deserializer);
+        let mut var_archiveCount = <i32>::sse_decode(deserializer);
+        return crate::api::bili::BiliUpProfile {
+            mid: var_mid,
+            name: var_name,
+            face: var_face,
+            sign: var_sign,
+            fans: var_fans,
+            archive_count: var_archiveCount,
+        };
+    }
+}
+
 impl SseDecode for crate::api::bili::BiliUser {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -1017,13 +1215,6 @@ impl SseDecode for bool {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         deserializer.cursor.read_u8().unwrap() != 0
-    }
-}
-
-impl SseDecode for f64 {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
-        deserializer.cursor.read_f64::<NativeEndian>().unwrap()
     }
 }
 
@@ -1133,25 +1324,35 @@ fn pde_ffi_dispatcher_primary_impl(
 ) {
     // Codec=Pde (Serialization + dispatch), see doc to use other codecs
     match func_id {
-        3 => wire__crate__api__bili__bili_extract_audio_impl(port, ptr, rust_vec_len, data_len),
-        4 => wire__crate__api__bili__bili_favorite_folders_impl(port, ptr, rust_vec_len, data_len),
-        5 => wire__crate__api__bili__bili_favorite_tracks_impl(port, ptr, rust_vec_len, data_len),
-        6 => wire__crate__api__bili__bili_history_impl(port, ptr, rust_vec_len, data_len),
-        7 => wire__crate__api__bili__bili_init_impl(port, ptr, rust_vec_len, data_len),
-        8 => wire__crate__api__bili__bili_logout_impl(port, ptr, rust_vec_len, data_len),
-        9 => wire__crate__api__bili__bili_music_rank_impl(port, ptr, rust_vec_len, data_len),
-        10 => wire__crate__api__bili__bili_music_recommend_impl(port, ptr, rust_vec_len, data_len),
-        11 => wire__crate__api__bili__bili_music_region_impl(port, ptr, rust_vec_len, data_len),
-        12 => wire__crate__api__bili__bili_nav_impl(port, ptr, rust_vec_len, data_len),
-        13 => wire__crate__api__bili__bili_new_songs_impl(port, ptr, rust_vec_len, data_len),
-        14 => wire__crate__api__bili__bili_official_lyrics_impl(port, ptr, rust_vec_len, data_len),
-        15 => wire__crate__api__bili__bili_proxy_url_impl(port, ptr, rust_vec_len, data_len),
-        16 => wire__crate__api__bili__bili_qr_generate_impl(port, ptr, rust_vec_len, data_len),
-        17 => wire__crate__api__bili__bili_qr_poll_impl(port, ptr, rust_vec_len, data_len),
-        18 => wire__crate__api__bili__bili_search_impl(port, ptr, rust_vec_len, data_len),
-        19 => wire__crate__api__bili__bili_season_tracks_impl(port, ptr, rust_vec_len, data_len),
-        20 => wire__crate__api__bili__bili_video_pages_impl(port, ptr, rust_vec_len, data_len),
-        23 => wire__crate__api__simple__init_app_impl(port, ptr, rust_vec_len, data_len),
+        3 => wire__crate__api__bili__bili_create_favorite_folder_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        4 => wire__crate__api__bili__bili_deal_favorite_impl(port, ptr, rust_vec_len, data_len),
+        5 => wire__crate__api__bili__bili_extract_audio_impl(port, ptr, rust_vec_len, data_len),
+        6 => wire__crate__api__bili__bili_favorite_folders_impl(port, ptr, rust_vec_len, data_len),
+        7 => wire__crate__api__bili__bili_favorite_tracks_impl(port, ptr, rust_vec_len, data_len),
+        8 => wire__crate__api__bili__bili_history_impl(port, ptr, rust_vec_len, data_len),
+        9 => wire__crate__api__bili__bili_init_impl(port, ptr, rust_vec_len, data_len),
+        10 => wire__crate__api__bili__bili_logout_impl(port, ptr, rust_vec_len, data_len),
+        11 => wire__crate__api__bili__bili_music_rank_impl(port, ptr, rust_vec_len, data_len),
+        12 => wire__crate__api__bili__bili_music_recommend_impl(port, ptr, rust_vec_len, data_len),
+        13 => wire__crate__api__bili__bili_music_region_impl(port, ptr, rust_vec_len, data_len),
+        14 => wire__crate__api__bili__bili_music_zone_impl(port, ptr, rust_vec_len, data_len),
+        15 => wire__crate__api__bili__bili_nav_impl(port, ptr, rust_vec_len, data_len),
+        16 => wire__crate__api__bili__bili_new_songs_impl(port, ptr, rust_vec_len, data_len),
+        17 => wire__crate__api__bili__bili_official_lyrics_impl(port, ptr, rust_vec_len, data_len),
+        18 => wire__crate__api__bili__bili_proxy_url_impl(port, ptr, rust_vec_len, data_len),
+        19 => wire__crate__api__bili__bili_qr_generate_impl(port, ptr, rust_vec_len, data_len),
+        20 => wire__crate__api__bili__bili_qr_poll_impl(port, ptr, rust_vec_len, data_len),
+        21 => wire__crate__api__bili__bili_search_impl(port, ptr, rust_vec_len, data_len),
+        22 => wire__crate__api__bili__bili_season_tracks_impl(port, ptr, rust_vec_len, data_len),
+        23 => wire__crate__api__bili__bili_user_archives_impl(port, ptr, rust_vec_len, data_len),
+        24 => wire__crate__api__bili__bili_user_card_impl(port, ptr, rust_vec_len, data_len),
+        25 => wire__crate__api__bili__bili_video_pages_impl(port, ptr, rust_vec_len, data_len),
+        28 => wire__crate__api__simple__init_app_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -1166,8 +1367,8 @@ fn pde_ffi_dispatcher_sync_impl(
     match func_id {
         1 => wire__crate__api__simple__app_name_impl(ptr, rust_vec_len, data_len),
         2 => wire__crate__api__bili__bili_clean_title_impl(ptr, rust_vec_len, data_len),
-        21 => wire__crate__api__desktop_lyric__desktop_lyric_set_impl(ptr, rust_vec_len, data_len),
-        22 => wire__crate__api__simple__greet_impl(ptr, rust_vec_len, data_len),
+        26 => wire__crate__api__desktop_lyric__desktop_lyric_set_impl(ptr, rust_vec_len, data_len),
+        27 => wire__crate__api__simple__greet_impl(ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -1229,6 +1430,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::bili::BiliFavoriteFolder {
             self.title.into_into_dart().into_dart(),
             self.media_count.into_into_dart().into_dart(),
             self.cover_url.into_into_dart().into_dart(),
+            self.fav_state.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -1401,6 +1603,31 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::bili::BiliTrack>
     }
 }
 // Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::bili::BiliUpProfile {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.mid.into_into_dart().into_dart(),
+            self.name.into_into_dart().into_dart(),
+            self.face.into_into_dart().into_dart(),
+            self.sign.into_into_dart().into_dart(),
+            self.fans.into_into_dart().into_dart(),
+            self.archive_count.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::bili::BiliUpProfile
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::bili::BiliUpProfile>
+    for crate::api::bili::BiliUpProfile
+{
+    fn into_into_dart(self) -> crate::api::bili::BiliUpProfile {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
 impl flutter_rust_bridge::IntoDart for crate::api::bili::BiliUser {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         [
@@ -1455,6 +1682,7 @@ impl SseEncode for crate::api::bili::BiliFavoriteFolder {
         <String>::sse_encode(self.title, serializer);
         <i32>::sse_encode(self.media_count, serializer);
         <String>::sse_encode(self.cover_url, serializer);
+        <bool>::sse_encode(self.fav_state, serializer);
     }
 }
 
@@ -1532,6 +1760,18 @@ impl SseEncode for crate::api::bili::BiliTrack {
     }
 }
 
+impl SseEncode for crate::api::bili::BiliUpProfile {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i64>::sse_encode(self.mid, serializer);
+        <String>::sse_encode(self.name, serializer);
+        <String>::sse_encode(self.face, serializer);
+        <String>::sse_encode(self.sign, serializer);
+        <i64>::sse_encode(self.fans, serializer);
+        <i32>::sse_encode(self.archive_count, serializer);
+    }
+}
+
 impl SseEncode for crate::api::bili::BiliUser {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -1547,13 +1787,6 @@ impl SseEncode for bool {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         serializer.cursor.write_u8(self as _).unwrap();
-    }
-}
-
-impl SseEncode for f64 {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
-        serializer.cursor.write_f64::<NativeEndian>(self).unwrap();
     }
 }
 

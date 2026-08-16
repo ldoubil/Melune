@@ -8,6 +8,7 @@ import 'package:melune/player/playback_store.dart';
 import 'package:melune/theme/tokens.dart';
 import 'package:melune/widgets/audio_quality.dart';
 import 'package:melune/widgets/track_cover.dart';
+import 'package:melune/widgets/track_like_button.dart';
 import 'package:melune/widgets/volume_button.dart';
 import 'package:melune/window/window_controller.dart';
 
@@ -95,44 +96,34 @@ class _TrackInfo extends StatelessWidget {
       width: compact ? 132 : 220,
       key: const Key('playback-now-playing'),
       child: Row(
-            children: [
-              TrackCover(url: track?.coverUrl ?? ''),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      player.displayTitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        color: tokens.colorContrast,
-                      ),
-                    ),
-                    Text(
-                      track?.artist ?? 'Melune',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 12, color: tokens.colorBase),
-                    ),
-                  ],
+        children: [
+          TrackCover(url: track?.coverUrl ?? ''),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  player.displayTitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: tokens.colorContrast,
+                  ),
                 ),
-              ),
-              IconButton(
-                tooltip: player.liked ? '取消收藏' : '收藏',
-                visualDensity: VisualDensity.compact,
-                padding: EdgeInsets.zero,
-                onPressed: player.toggleLike,
-                icon: Icon(
-                  player.liked ? Icons.favorite : Icons.favorite_border,
-                  size: 20,
-                  color: player.liked ? tokens.colorBrand : tokens.colorBase,
+                Text(
+                  track?.artist ?? 'Melune',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 12, color: tokens.colorBase),
                 ),
-              ),
-            ],
+              ],
+            ),
+          ),
+          TrackLikeButton(player: player, compact: true),
+        ],
       ),
     );
   }
@@ -160,7 +151,10 @@ class _Transport extends StatelessWidget {
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints.tightFor(width: 32, height: 32),
               onPressed: player.previous,
-              icon: Icon(Icons.skip_previous_rounded, color: tokens.colorContrast),
+              icon: Icon(
+                Icons.skip_previous_rounded,
+                color: tokens.colorContrast,
+              ),
             ),
             Material(
               color: tokens.colorBrand,
@@ -210,7 +204,8 @@ class _Transport extends StatelessWidget {
             builder: (context, _) {
               final progress = player.duration.inMilliseconds == 0
                   ? 0.0
-                  : player.position.inMilliseconds / player.duration.inMilliseconds;
+                  : player.position.inMilliseconds /
+                        player.duration.inMilliseconds;
               return ExcludeSemantics(
                 child: Row(
                   children: [
@@ -226,10 +221,16 @@ class _Transport extends StatelessWidget {
                       child: SliderTheme(
                         data: SliderTheme.of(context).copyWith(
                           trackHeight: 3,
-                          thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
-                          overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
+                          thumbShape: const RoundSliderThumbShape(
+                            enabledThumbRadius: 5,
+                          ),
+                          overlayShape: const RoundSliderOverlayShape(
+                            overlayRadius: 10,
+                          ),
                           activeTrackColor: tokens.colorBrand,
-                          inactiveTrackColor: tokens.colorBrand.withValues(alpha: 0.22),
+                          inactiveTrackColor: tokens.colorBrand.withValues(
+                            alpha: 0.22,
+                          ),
                           thumbColor: tokens.colorBrand,
                         ),
                         child: Slider(
@@ -238,7 +239,8 @@ class _Transport extends StatelessWidget {
                             player.seek(
                               Duration(
                                 milliseconds:
-                                    (value * player.duration.inMilliseconds).round(),
+                                    (value * player.duration.inMilliseconds)
+                                        .round(),
                               ),
                             );
                           },
@@ -279,11 +281,14 @@ class _Extras extends StatelessWidget {
         if (!compact && isDesktopWindow)
           IconButton(
             key: const Key('playback-desktop-lyric'),
-            tooltip: player.desktopLyricOpen ? '关闭桌面歌词' : '桌面歌词',
+            tooltip: player.desktopLyricOpen
+                ? '关闭桌面歌词 · 长按切换特效'
+                : '桌面歌词 · 长按切换特效',
             visualDensity: VisualDensity.compact,
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints.tightFor(width: 32, height: 32),
             onPressed: player.toggleDesktopLyric,
+            onLongPress: player.cycleDesktopLyricEffect,
             icon: Icon(
               Icons.lyrics_rounded,
               color: player.desktopLyricOpen

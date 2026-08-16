@@ -4,14 +4,16 @@ import 'package:melune/bili/models.dart';
 import 'package:melune/player/playback_store.dart';
 import 'package:melune/theme/tokens.dart';
 import 'package:melune/widgets/album_card.dart';
+import 'package:melune/widgets/skeleton.dart';
 import 'package:melune/widgets/track_tile.dart';
 
 enum _SearchKind { all, playlists, tracks }
 
 class SearchPage extends StatefulWidget {
-  const SearchPage({super.key, this.query = ''});
+  const SearchPage({super.key, this.query = '', this.onClose});
 
   final String query;
+  final VoidCallback? onClose;
 
   @override
   State<SearchPage> createState() => _SearchPageState();
@@ -37,7 +39,9 @@ class _SearchPageState extends State<SearchPage> {
   void initState() {
     super.initState();
     if (widget.query.isNotEmpty) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _search(widget.query));
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _search(widget.query),
+      );
     }
   }
 
@@ -198,19 +202,29 @@ class _SearchPageState extends State<SearchPage> {
     final singles = singlesFromTracks(_items);
 
     if (_loading && _items.isEmpty) {
-      return const Center(child: CircularProgressIndicator());
+      return Column(
+        children: [
+          if (widget.onClose != null) _SearchBar(onClose: widget.onClose!),
+          const Expanded(child: _SearchSkeleton()),
+        ],
+      );
     }
 
     if (_items.isEmpty) {
-      return _Empty(
-        error: _error,
-        searched: widget.query.isNotEmpty,
+      return Column(
+        children: [
+          if (widget.onClose != null) _SearchBar(onClose: widget.onClose!),
+          Expanded(
+            child: _Empty(error: _error, searched: widget.query.isNotEmpty),
+          ),
+        ],
       );
     }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        if (widget.onClose != null) _SearchBar(onClose: widget.onClose!),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
           child: Wrap(
@@ -346,10 +360,8 @@ class _SearchPageState extends State<SearchPage> {
       if (cursor >= 0 && cursor < singles.length) {
         return TrackTile(
           track: singles[cursor],
-          onTap: () => PlaybackScope.of(context).playTracks(
-            singles,
-            start: cursor,
-          ),
+          onTap: () =>
+              PlaybackScope.of(context).playTracks(singles, start: cursor),
         );
       }
     }
@@ -422,11 +434,7 @@ class _SearchStatus extends StatelessWidget {
     final tokens = context.tokens;
     Widget child;
     if (loading) {
-      child = const SizedBox(
-        width: 22,
-        height: 22,
-        child: CircularProgressIndicator(strokeWidth: 2.4),
-      );
+      child = const TrackTileSkeleton();
     } else if (error != null) {
       child = Text(
         error!,
@@ -448,12 +456,69 @@ class _SearchStatus extends StatelessWidget {
   }
 }
 
+class _SearchBar extends StatelessWidget {
+  const _SearchBar({required this.onClose});
+
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 4, 12, 0),
+      child: Row(
+        children: [
+          IconButton(
+            key: const Key('search-back'),
+            tooltip: '关闭搜索',
+            onPressed: onClose,
+            icon: Icon(Icons.arrow_back_rounded, color: tokens.colorContrast),
+          ),
+          Expanded(
+            child: Text(
+              '搜索',
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+                color: tokens.colorContrast,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SearchSkeleton extends StatelessWidget {
+  const _SearchSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: context.listPadding(16, 12, 16, 24),
+      children: [
+        const MeluneSkeleton(width: 48, height: 18, radius: 6),
+        const SizedBox(height: 12),
+        SizedBox(
+          height: AlbumCard.height,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: 4,
+            separatorBuilder: (_, _) => const SizedBox(width: 12),
+            itemBuilder: (_, _) => const AlbumCardSkeleton(),
+          ),
+        ),
+        const SizedBox(height: 22),
+        const MeluneSkeleton(width: 48, height: 18, radius: 6),
+        const SizedBox(height: 8),
+        for (var i = 0; i < 6; i++) const TrackTileSkeleton(),
+      ],
+    );
+  }
+}
+
 class _Empty extends StatelessWidget {
-  const _Empty({
-    required this.error,
-    required this.searched,
-    this.message,
-  });
+  const _Empty({required this.error, required this.searched, this.message});
 
   final String? error;
   final bool searched;
@@ -469,13 +534,11 @@ class _Empty extends StatelessWidget {
         Icon(Icons.search, size: 48, color: tokens.colorBase),
         const SizedBox(height: 12),
         Text(
-          error ??
-              message ??
-              (searched ? '没有找到相关音乐' : '输入关键词开始搜索'),
+          error ?? message ?? (searched ? '没有找到相关音乐' : '输入关键词开始搜索'),
           textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-            color: tokens.colorBase,
-          ),
+          style: Theme.of(
+            context,
+          ).textTheme.bodyMedium?.copyWith(color: tokens.colorBase),
         ),
       ],
     );

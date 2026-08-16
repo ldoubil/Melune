@@ -55,26 +55,52 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Melune · 洛音'), findsWidgets);
-    expect(find.text('新专'), findsOneWidget);
-    expect(find.text('接着听'), findsOneWidget);
-    expect(find.text('为你推荐'), findsOneWidget);
-    expect(find.text('发现'), findsOneWidget);
+    expect(find.text('全站音乐榜'), findsOneWidget);
+    expect(find.byKey(const Key('nav-discover')), findsOneWidget);
+    expect(find.byKey(const Key('nav-favorites')), findsNothing);
+    expect(find.text('收藏夹'), findsOneWidget);
+    expect(find.byKey(const Key('library-offline')), findsOneWidget);
     expect(find.byKey(const Key('title-search-field')), findsOneWidget);
     expect(find.byKey(const Key('playback-play')), findsOneWidget);
     expect(find.byKey(const Key('playback-quality')), findsOneWidget);
 
-    await tester.tap(find.byKey(const Key('album-card-BV1demo1')).first);
+    await tester.tap(find.byKey(const Key('rank-row-BV1demo1')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('album-page')), findsOneWidget);
     expect(find.text('夜航'), findsWidgets);
     expect(find.byKey(const Key('album-play')), findsOneWidget);
     expect(find.byKey(const Key('album-queue')), findsOneWidget);
+    expect(find.byKey(const Key('album-cache')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('album-artist-42')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('artist-page-42')), findsOneWidget);
+    expect(find.text('作者主页'), findsOneWidget);
+    expect(find.text('洛音'), findsWidgets);
+    await tester.tap(find.byKey(const Key('artist-back')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('album-page')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('album-cache')));
+    await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const Key('album-queue')));
     await tester.pump();
 
     await tester.tap(find.byKey(const Key('album-back')));
     await tester.pump();
+
+    await tester.tap(find.byKey(const Key('library-offline')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('offline-page')), findsOneWidget);
+    expect(find.text('夜航'), findsWidgets);
+    await tester.tap(find.byKey(const Key('offline-back')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('nav-discover')));
+    await tester.pumpAndSettle();
+    expect(find.text('发现'), findsWidgets);
+    expect(find.text('原创'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('playback-playlist')));
     await tester.pumpAndSettle();
@@ -151,10 +177,6 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('nav-search')));
-    await tester.pumpAndSettle();
-    expect(find.text('输入关键词开始搜索'), findsOneWidget);
-
     await tester.enterText(find.byKey(const Key('title-search-field')), '夜');
     await tester.testTextInput.receiveAction(TextInputAction.search);
     await tester.pumpAndSettle();
@@ -172,7 +194,7 @@ void main() {
 
     await tester.tap(find.byKey(const Key('nav-favorites')));
     await tester.pumpAndSettle();
-    expect(find.text('还没有收藏'), findsOneWidget);
+    expect(find.text('离线缓存'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('nav-settings')));
     await tester.pumpAndSettle();
@@ -223,11 +245,9 @@ void main() {
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
 
-    final bili = FakeBiliClient();
+    final bili = FakeBiliClient(loggedIn: true);
     final accounts = AccountStore(bili: bili);
-    accounts.debugSetUser(
-      const MeluneAccount(id: '1', name: '洛音', mid: 42),
-    );
+    accounts.debugSetUser(const MeluneAccount(id: '1', name: '洛音', mid: 42));
 
     await tester.pumpWidget(
       MeluneApp(
@@ -245,7 +265,15 @@ void main() {
     expect(find.byType(AccountsPopup), findsOneWidget);
     expect(find.text('洛音'), findsWidgets);
     expect(find.text('UID 42'), findsOneWidget);
+    await tester.tap(find.byTooltip('关闭'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('nav-favorites')));
+    await tester.pumpAndSettle();
+    expect(find.text('歌单'), findsOneWidget);
+    expect(find.text('默认收藏'), findsOneWidget);
 
+    await tester.tap(find.byKey(const Key('nav-account')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('account-logout')));
     await tester.pumpAndSettle();
     expect(accounts.active, isNull);

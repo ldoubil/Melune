@@ -19,6 +19,7 @@ class FakeBiliClient implements BiliClient {
       coverUrl: '',
       durationSec: 212,
       playCount: 1000,
+      upMid: 42,
     ),
     MeluneTrack(
       id: 'BV1demo2',
@@ -68,6 +69,7 @@ class FakeBiliClient implements BiliClient {
       durationSec: 1200,
       playCount: 2200,
       pageCount: 6,
+      upMid: 42,
     ),
   ];
 
@@ -190,7 +192,7 @@ class FakeBiliClient implements BiliClient {
       orElse: () => qualities.first,
     );
     return MeluneExtractedAudio(
-      track: track,
+      track: track.copyWith(audioUrl: 'melune-fake://audio'),
       qualities: qualities,
       selectedId: selected.id,
     );
@@ -211,22 +213,80 @@ class FakeBiliClient implements BiliClient {
       _samples.reversed.toList(growable: false);
 
   @override
+  Future<List<MeluneTrack>> musicZone({int cateId = 0, int page = 1}) async {
+    if (page > 1) {
+      return const [];
+    }
+    return musicRegion(page: page);
+  }
+
+  @override
   Future<List<MeluneTrack>> musicRecommend() async =>
       _samples.skip(1).toList(growable: false);
 
+  final List<MeluneFavoriteFolder> _folders = [
+    const MeluneFavoriteFolder(
+      id: 9,
+      title: '默认收藏夹',
+      mediaCount: 1,
+      coverUrl: '',
+    ),
+    const MeluneFavoriteFolder(
+      id: 1,
+      title: 'Melune_默认收藏',
+      mediaCount: 2,
+      coverUrl: '',
+    ),
+  ];
+  var _nextFolderId = 20;
+  final Set<String> _membership = {};
+
   @override
-  Future<List<MeluneFavoriteFolder>> favoriteFolders() async {
+  Future<List<MeluneFavoriteFolder>> favoriteFolders({int rid = 0}) async {
     if (!loggedIn) {
       return const [];
     }
-    return const [
-      MeluneFavoriteFolder(
-        id: 1,
-        title: '默认收藏夹',
-        mediaCount: 2,
-        coverUrl: '',
-      ),
-    ];
+    return _folders
+        .map(
+          (folder) => folder.copyWith(
+            favState: rid > 0 && _membership.contains('$rid-${folder.id}'),
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  @override
+  Future<MeluneFavoriteFolder> createFavoriteFolder(String title) async {
+    if (!loggedIn) {
+      throw Exception('未登录，无法创建收藏夹');
+    }
+    final folder = MeluneFavoriteFolder(
+      id: _nextFolderId++,
+      title: title,
+      mediaCount: 0,
+      coverUrl: '',
+    );
+    _folders.add(folder);
+    return folder;
+  }
+
+  @override
+  Future<void> dealFavorite({
+    required int rid,
+    required String bvid,
+    required List<int> addIds,
+    required List<int> delIds,
+  }) async {
+    if (!loggedIn) {
+      throw Exception('未登录，无法收藏');
+    }
+    final avid = rid > 0 ? rid : 1;
+    for (final id in addIds) {
+      _membership.add('$avid-$id');
+    }
+    for (final id in delIds) {
+      _membership.remove('$avid-$id');
+    }
   }
 
   @override
@@ -249,6 +309,42 @@ class FakeBiliClient implements BiliClient {
       hasMore: false,
       cursorMax: 0,
       cursorViewAt: 0,
+    );
+  }
+
+  @override
+  Future<MeluneSearchPage> userArchives(int mid, {int page = 1}) async {
+    if (page > 1) {
+      return const MeluneSearchPage(
+        items: [],
+        page: 2,
+        totalPages: 1,
+        totalResults: 0,
+      );
+    }
+    final items = _samples
+        .where(
+          (item) => item.upMid == mid || (mid == 42 && item.artist == '洛音'),
+        )
+        .toList(growable: false);
+    return MeluneSearchPage(
+      items: items.isEmpty ? _samples.take(2).toList(growable: false) : items,
+      page: 1,
+      totalPages: 1,
+      totalResults: items.isEmpty ? 2 : items.length,
+    );
+  }
+
+  @override
+  Future<MeluneUpProfile> userCard(int mid) async {
+    final match = _samples.where((item) => item.upMid == mid);
+    final name = match.isEmpty ? 'UP$mid' : match.first.artist;
+    return MeluneUpProfile(
+      mid: mid,
+      name: name.isEmpty ? '洛音' : name,
+      sign: '用音乐把夜晚拉长',
+      fans: 12800,
+      archiveCount: 6,
     );
   }
 

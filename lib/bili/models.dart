@@ -1,3 +1,5 @@
+import 'package:melune/bili/melune_fav.dart';
+
 class MeluneUser {
   const MeluneUser({
     required this.isLogin,
@@ -13,12 +15,7 @@ class MeluneUser {
   final String face;
   final bool isVip;
 
-  static const guest = MeluneUser(
-    isLogin: false,
-    mid: 0,
-    name: '',
-    face: '',
-  );
+  static const guest = MeluneUser(isLogin: false, mid: 0, name: '', face: '');
 }
 
 class MeluneTrack {
@@ -86,6 +83,49 @@ class MeluneTrack {
       upMid: upMid ?? this.upMid,
     );
   }
+
+  Map<String, Object?> toJson() => {
+    'id': id,
+    'bvid': bvid,
+    'aid': aid,
+    'cid': cid,
+    'title': title,
+    'artist': artist,
+    'albumTitle': albumTitle,
+    'coverUrl': coverUrl,
+    'durationSec': durationSec,
+    'playCount': playCount,
+    'pageCount': pageCount,
+    'seasonId': seasonId,
+    'upMid': upMid,
+  };
+
+  static MeluneTrack? tryParse(Object? raw) {
+    final json = raw is Map ? Map<String, Object?>.from(raw) : null;
+    if (json == null) {
+      return null;
+    }
+    final bvid = json['bvid'] as String? ?? '';
+    final id = json['id'] as String? ?? bvid;
+    if (id.isEmpty && bvid.isEmpty) {
+      return null;
+    }
+    return MeluneTrack(
+      id: id.isEmpty ? bvid : id,
+      bvid: bvid,
+      aid: (json['aid'] as num?)?.toInt() ?? 0,
+      cid: (json['cid'] as num?)?.toInt() ?? 0,
+      title: json['title'] as String? ?? '',
+      artist: json['artist'] as String? ?? '',
+      albumTitle: json['albumTitle'] as String? ?? '',
+      coverUrl: json['coverUrl'] as String? ?? '',
+      durationSec: (json['durationSec'] as num?)?.toInt() ?? 0,
+      playCount: (json['playCount'] as num?)?.toInt() ?? 0,
+      pageCount: (json['pageCount'] as num?)?.toInt() ?? 1,
+      seasonId: (json['seasonId'] as num?)?.toInt() ?? 0,
+      upMid: (json['upMid'] as num?)?.toInt() ?? 0,
+    );
+  }
 }
 
 class MeluneSearchPage {
@@ -127,12 +167,34 @@ class MeluneFavoriteFolder {
     required this.title,
     required this.mediaCount,
     required this.coverUrl,
+    this.favState = false,
   });
 
   final int id;
   final String title;
   final int mediaCount;
   final String coverUrl;
+  final bool favState;
+
+  bool get isMelune => isMeluneFavTitle(title);
+
+  bool get isDefault => title == kMeluneDefaultFavTitle;
+
+  String get displayTitle => meluneFavDisplayTitle(title);
+
+  MeluneFavoriteFolder copyWith({
+    int? mediaCount,
+    String? coverUrl,
+    bool? favState,
+  }) {
+    return MeluneFavoriteFolder(
+      id: id,
+      title: title,
+      mediaCount: mediaCount ?? this.mediaCount,
+      coverUrl: coverUrl ?? this.coverUrl,
+      favState: favState ?? this.favState,
+    );
+  }
 }
 
 class MeluneAlbum {
@@ -180,9 +242,7 @@ class MeluneAlbum {
     return MeluneAlbum(
       id: id,
       title: title,
-      subtitle: subtitle.isNotEmpty
-          ? subtitle
-          : '${tracks.length} 首',
+      subtitle: subtitle.isNotEmpty ? subtitle : '${tracks.length} 首',
       coverUrl: coverUrl.isNotEmpty
           ? coverUrl
           : (tracks.isEmpty ? '' : tracks.first.coverUrl),
@@ -194,7 +254,7 @@ class MeluneAlbum {
   factory MeluneAlbum.fromFolder(MeluneFavoriteFolder folder) {
     return MeluneAlbum(
       id: 'fav-${folder.id}',
-      title: folder.title,
+      title: folder.displayTitle,
       subtitle: '${folder.mediaCount} 首',
       coverUrl: folder.coverUrl,
       folderId: folder.id,
@@ -211,13 +271,25 @@ class MeluneAlbum {
   final int seasonId;
   final int upMid;
 
-  MeluneAlbum copyWith({List<MeluneTrack>? tracks, String? coverUrl}) {
+  MeluneAlbum copyWith({
+    List<MeluneTrack>? tracks,
+    String? coverUrl,
+    String? subtitle,
+  }) {
+    final nextTracks = tracks ?? this.tracks;
+    final nextCover = coverUrl ?? this.coverUrl;
     return MeluneAlbum(
       id: id,
       title: title,
-      subtitle: subtitle,
-      coverUrl: coverUrl ?? this.coverUrl,
-      tracks: tracks ?? this.tracks,
+      subtitle:
+          subtitle ??
+          (tracks != null && folderId > 0
+              ? '${nextTracks.length} 首'
+              : this.subtitle),
+      coverUrl: nextCover.isNotEmpty
+          ? nextCover
+          : (nextTracks.isEmpty ? this.coverUrl : nextTracks.first.coverUrl),
+      tracks: nextTracks,
       bvid: bvid,
       folderId: folderId,
       seasonId: seasonId,
@@ -253,6 +325,37 @@ List<MeluneTrack> singlesFromTracks(List<MeluneTrack> tracks) {
   ];
 }
 
+String formatPlayCount(int count) {
+  if (count >= 100000000) {
+    return '${(count / 100000000).toStringAsFixed(1)}亿';
+  }
+  if (count >= 10000) {
+    return '${(count / 10000).toStringAsFixed(1)}万';
+  }
+  if (count > 0) {
+    return '$count';
+  }
+  return '';
+}
+
+class MeluneMusicZone {
+  const MeluneMusicZone({required this.cateId, required this.label});
+
+  final int cateId;
+  final String label;
+}
+
+/// 对齐 B 站音乐分区页 https://www.bilibili.com/c/music/ 的歌曲向子区。
+const kMeluneMusicZones = [
+  MeluneMusicZone(cateId: 0, label: '全部'),
+  MeluneMusicZone(cateId: 28, label: '原创'),
+  MeluneMusicZone(cateId: 31, label: '翻唱'),
+  MeluneMusicZone(cateId: 30, label: 'VOCALOID'),
+  MeluneMusicZone(cateId: 59, label: '演奏'),
+  MeluneMusicZone(cateId: 193, label: 'MV'),
+  MeluneMusicZone(cateId: 194, label: '电音'),
+];
+
 class MeluneHistoryPage {
   const MeluneHistoryPage({
     required this.tracks,
@@ -265,6 +368,24 @@ class MeluneHistoryPage {
   final bool hasMore;
   final int cursorMax;
   final int cursorViewAt;
+}
+
+class MeluneUpProfile {
+  const MeluneUpProfile({
+    required this.mid,
+    required this.name,
+    this.face = '',
+    this.sign = '',
+    this.fans = 0,
+    this.archiveCount = 0,
+  });
+
+  final int mid;
+  final String name;
+  final String face;
+  final String sign;
+  final int fans;
+  final int archiveCount;
 }
 
 class MeluneLyricLine {
@@ -296,8 +417,7 @@ class MeluneAudioQuality {
   final bool vipOnly;
   final String audioUrl;
 
-  bool get isHiRes =>
-      id == 30251 || id == 30252 || label.contains('Hi-Res');
+  bool get isHiRes => id == 30251 || id == 30252 || label.contains('Hi-Res');
 
   bool get isDolby => id == 30250 || label.contains('杜比');
 }

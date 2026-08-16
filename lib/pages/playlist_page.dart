@@ -26,10 +26,7 @@ class _PlaylistGateState extends State<PlaylistGate>
       duration: const Duration(milliseconds: 420),
       reverseDuration: const Duration(milliseconds: 320),
     );
-    _slide = Tween<Offset>(
-      begin: const Offset(0, 1),
-      end: Offset.zero,
-    ).animate(
+    _slide = Tween<Offset>(begin: const Offset(0, 1), end: Offset.zero).animate(
       CurvedAnimation(
         parent: _controller,
         curve: Curves.easeOutCubic,
@@ -159,9 +156,7 @@ class PlaylistPage extends StatelessWidget {
                 child: Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
-                    store.queue.isEmpty
-                        ? '还没有歌曲'
-                        : '${store.queue.length} 首',
+                    store.queue.isEmpty ? '还没有歌曲' : '${store.queue.length} 首',
                     style: TextStyle(color: tokens.colorBase, fontSize: 13),
                   ),
                 ),

@@ -2,11 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:melune/bili/bili_client.dart';
 
 class BiliScope extends InheritedWidget {
-  const BiliScope({
-    super.key,
-    required this.client,
-    required super.child,
-  });
+  const BiliScope({super.key, required this.client, required super.child});
 
   final BiliClient client;
 

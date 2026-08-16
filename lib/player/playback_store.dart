@@ -1,13 +1,21 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 import 'dart:math';
 
 import 'package:audio_session/audio_session.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:melune/bili/bili_client.dart';
+import 'package:melune/bili/favorite_library.dart';
 import 'package:melune/bili/models.dart';
 import 'package:melune/lyrics/catalog.dart';
 import 'package:melune/player/media_handler.dart';
+import 'package:melune/player/cover_cache.dart';
+import 'package:melune/player/equalizer.dart';
+import 'package:melune/player/offline_cache.dart';
+import 'package:melune/settings/app_settings.dart';
 import 'package:melune/window/desktop_lyric.dart';
 import 'package:melune/window/window_controller.dart';
 
@@ -15,36 +23,46 @@ enum PlaybackMode { sequential, shuffle, repeatOne, repeatAll }
 
 extension PlaybackModeX on PlaybackMode {
   String get label => switch (this) {
-        PlaybackMode.sequential => '顺序播放',
-        PlaybackMode.shuffle => '随机播放',
-        PlaybackMode.repeatOne => '单曲循环',
-        PlaybackMode.repeatAll => '列表循环',
-      };
+    PlaybackMode.sequential => '顺序播放',
+    PlaybackMode.shuffle => '随机播放',
+    PlaybackMode.repeatOne => '单曲循环',
+    PlaybackMode.repeatAll => '列表循环',
+  };
 
   IconData get icon => switch (this) {
-        PlaybackMode.sequential => Icons.repeat_rounded,
-        PlaybackMode.shuffle => Icons.shuffle_rounded,
-        PlaybackMode.repeatOne => Icons.repeat_one_rounded,
-        PlaybackMode.repeatAll => Icons.repeat_rounded,
-      };
+    PlaybackMode.sequential => Icons.repeat_rounded,
+    PlaybackMode.shuffle => Icons.shuffle_rounded,
+    PlaybackMode.repeatOne => Icons.repeat_one_rounded,
+    PlaybackMode.repeatAll => Icons.repeat_rounded,
+  };
 
   bool get emphasized => this != PlaybackMode.sequential;
 }
 
 class PlaybackStore extends ChangeNotifier implements MediaSessionHost {
-  PlaybackStore({required this.bili, this.media, this.windows}) {
+  PlaybackStore({required this.bili, this.media, this.windows, this.persistDir})
+    : favorites = FavoriteLibrary(bili: bili),
+      offline = OfflineCache(bili: bili, persistDir: persistDir) {
     media?.attach(this);
     windows?.attach(this);
     attachDesktopLyricHost(
       onClosed: closeDesktopLyricFromOverlay,
       onToggleLike: toggleLike,
       onToggleLock: toggleDesktopLyricLock,
+      onCycleEffect: cycleDesktopLyricEffect,
     );
+    CoverCache.instance.attach(persistDir);
+    if ((persistDir ?? '').isNotEmpty) {
+      _lifecycle = _PlaybackLifecycle(this)..attach();
+    }
   }
 
   final BiliClient bili;
+  final FavoriteLibrary favorites;
+  final OfflineCache offline;
   final NowPlayingBridge? media;
   final NowPlayingBridge? windows;
+  final String? persistDir;
 
   final List<MeluneTrack> _queue = [];
   final List<MeluneLyricLine> _lyrics = [];
@@ -76,13 +94,17 @@ class PlaybackStore extends ChangeNotifier implements MediaSessionHost {
   var _selectedQualityId = 0;
   var _desktopLyricOpen = false;
   var _desktopLyricLocked = false;
+  var _lyricEffect = DesktopLyricEffect.reel;
   String _desktopLyricSig = '';
   var _sessionEpoch = 0;
   var _forceSessionBump = false;
   String _sessionSig = '';
   var _ducked = false;
   var _pausedForFocus = false;
+  AndroidEqualizer? _androidEq;
   final _random = Random();
+  Timer? _persistTimer;
+  _PlaybackLifecycle? _lifecycle;
 
   @override
   int get sessionEpoch => _sessionEpoch;
@@ -93,8 +115,7 @@ class PlaybackStore extends ChangeNotifier implements MediaSessionHost {
   List<MeluneTrack> get queue => List.unmodifiable(_queue);
   List<MeluneLyricLine> get lyrics => List.unmodifiable(_lyrics);
   List<MeluneTrack> get recentTracks => List.unmodifiable(_recent);
-  List<MeluneTrack> get likedTracks =>
-      List.unmodifiable(_likedTracks.values);
+  List<MeluneTrack> get likedTracks => List.unmodifiable(_likedTracks.values);
   @override
   bool get playing => _playing;
   @override
@@ -133,9 +154,11 @@ class PlaybackStore extends ChangeNotifier implements MediaSessionHost {
   }
 
   String get qualityLabel => currentQuality?.label ?? '音质';
+  int get preferredQualityId => _preferredQualityId;
 
   bool get desktopLyricOpen => _desktopLyricOpen;
   bool get desktopLyricLocked => _desktopLyricLocked;
+  DesktopLyricEffect get lyricEffect => _lyricEffect;
 
   @override
   String get displayTitle {
@@ -164,6 +187,10 @@ class PlaybackStore extends ChangeNotifier implements MediaSessionHost {
       }
     }
     return index;
+  }
+
+  Future<void> cacheTracks(List<MeluneTrack> tracks) {
+    return offline.enqueue(tracks, qualityId: _preferredQualityId);
   }
 
   Future<void> playTracks(List<MeluneTrack> tracks, {int start = 0}) async {
@@ -274,7 +301,10 @@ class PlaybackStore extends ChangeNotifier implements MediaSessionHost {
     }
     final player = _player;
     if (player == null) {
-      await _startCurrent(autoplay: _wantPlaying);
+      await _startCurrent(
+        autoplay: _wantPlaying,
+        resumeAt: _position > Duration.zero ? _position : null,
+      );
       return;
     }
     if (_wantPlaying) {
@@ -287,20 +317,46 @@ class PlaybackStore extends ChangeNotifier implements MediaSessionHost {
 
   @override
   void toggleLike() {
-    toggleLikeTrack(track);
+    unawaited(toggleLikeTrack(track));
   }
 
-  void toggleLikeTrack(MeluneTrack? item) {
+  Future<void> toggleLikeTrack(MeluneTrack? item) async {
     if (item == null) {
       return;
     }
-    if (_likedTracks.containsKey(item.id)) {
-      _likedTracks.remove(item.id);
-    } else {
+    final like = !isLiked(item);
+    if (like) {
       _likedTracks[item.id] = item;
+    } else {
+      _likedTracks.remove(item.id);
     }
     notifyListeners();
     _pushDesktopLyric(force: true);
+    try {
+      await favorites.toggleDefault(item, like: like);
+      await _syncLikeFromRemote(item);
+    } catch (_) {}
+  }
+
+  Future<void> applyFavoriteFolders(
+    MeluneTrack item,
+    Set<int> folderIds,
+  ) async {
+    await favorites.applyFolders(item, folderIds);
+    await _syncLikeFromRemote(item);
+  }
+
+  Future<void> _syncLikeFromRemote(MeluneTrack item) async {
+    try {
+      final inDefault = await favorites.isInDefault(item);
+      if (inDefault) {
+        _likedTracks[item.id] = item;
+      } else {
+        _likedTracks.remove(item.id);
+      }
+      notifyListeners();
+      _pushDesktopLyric(force: true);
+    } catch (_) {}
   }
 
   void openPlaylist() {
@@ -357,11 +413,55 @@ class PlaybackStore extends ChangeNotifier implements MediaSessionHost {
     notifyListeners();
   }
 
+  void setDesktopLyricOpen(bool value) {
+    if (!isDesktopWindow || _desktopLyricOpen == value) {
+      return;
+    }
+    _desktopLyricOpen = value;
+    _pushDesktopLyric(force: true);
+    notifyListeners();
+  }
+
   void toggleDesktopLyricLock() {
     if (!_desktopLyricOpen) {
       return;
     }
     _desktopLyricLocked = !_desktopLyricLocked;
+    _pushDesktopLyric(force: true);
+    AppSettings.instance.setLyricLocked(_desktopLyricLocked);
+    notifyListeners();
+  }
+
+  void setDesktopLyricLocked(bool value) {
+    if (_desktopLyricLocked == value) {
+      return;
+    }
+    _desktopLyricLocked = value;
+    _pushDesktopLyric(force: true);
+    AppSettings.instance.setLyricLocked(value);
+    notifyListeners();
+  }
+
+  void cycleDesktopLyricEffect() {
+    final values = DesktopLyricEffect.values;
+    setDesktopLyricEffect(values[(_lyricEffect.index + 1) % values.length]);
+  }
+
+  void setDesktopLyricEffect(DesktopLyricEffect effect) {
+    if (_lyricEffect == effect) {
+      return;
+    }
+    _lyricEffect = effect;
+    AppSettings.instance.setLyricEffect(effect);
+    _pushDesktopLyric(force: true);
+    notifyListeners();
+  }
+
+  void hideDesktopLyric() {
+    if (!_desktopLyricOpen) {
+      return;
+    }
+    _desktopLyricOpen = false;
     _pushDesktopLyric(force: true);
     notifyListeners();
   }
@@ -372,6 +472,20 @@ class PlaybackStore extends ChangeNotifier implements MediaSessionHost {
     }
     _desktopLyricOpen = false;
     notifyListeners();
+  }
+
+  double get lyricLineProgress {
+    final index = activeLyricIndex;
+    if (index < 0 || index >= _lyrics.length) {
+      return 0;
+    }
+    final line = _lyrics[index];
+    final total = line.to.inMilliseconds - line.from.inMilliseconds;
+    if (total <= 0) {
+      return 0;
+    }
+    return ((_position.inMilliseconds - line.from.inMilliseconds) / total)
+        .clamp(0.0, 1.0);
   }
 
   void _pushDesktopLyric({bool force = false}) {
@@ -389,8 +503,13 @@ class PlaybackStore extends ChangeNotifier implements MediaSessionHost {
         ? _lyrics[index + 1].content
         : '';
     final coverUrl = track?.coverUrl ?? '';
+    final progress = lyricLineProgress;
+    final progressBucket = _lyricEffect == DesktopLyricEffect.karaoke
+        ? (progress * 40).round()
+        : 0;
+    final opacity = AppSettings.instance.lyricOpacity;
     final signature =
-        '$_desktopLyricOpen|$_desktopLyricLocked|$liked|$coverUrl|$previous|$current|$next';
+        '$_desktopLyricOpen|$_desktopLyricLocked|$liked|$coverUrl|$previous|$current|$next|${_lyricEffect.name}|$progressBucket|$opacity';
     if (!force && signature == _desktopLyricSig) {
       return;
     }
@@ -404,11 +523,24 @@ class PlaybackStore extends ChangeNotifier implements MediaSessionHost {
       current: current,
       next: next,
       title: displayTitle,
+      effect: _lyricEffect,
+      progress: progress,
+      opacity: opacity,
     );
   }
 
   void cyclePlaybackMode() {
-    _mode = PlaybackMode.values[(_mode.index + 1) % PlaybackMode.values.length];
+    setPlaybackMode(
+      PlaybackMode.values[(_mode.index + 1) % PlaybackMode.values.length],
+    );
+  }
+
+  void setPlaybackMode(PlaybackMode mode) {
+    if (_mode == mode) {
+      return;
+    }
+    _mode = mode;
+    AppSettings.instance.setPlaybackModeIndex(mode.index);
     notifyListeners();
   }
 
@@ -424,11 +556,13 @@ class PlaybackStore extends ChangeNotifier implements MediaSessionHost {
 
   Future<void> setVolume(double value) async {
     _volume = value.clamp(0.0, 1.0);
+    AppSettings.instance.setVolume(_volume);
     await _applyOutputVolume();
     notifyListeners();
   }
 
   Future<void> setQuality(int qualityId) async {
+    AppSettings.instance.setPreferredQualityId(qualityId);
     if (track == null || (qualityId == _selectedQualityId && qualityId != 0)) {
       _preferredQualityId = qualityId;
       notifyListeners();
@@ -444,7 +578,7 @@ class PlaybackStore extends ChangeNotifier implements MediaSessionHost {
 
   @override
   Future<void> next() async {
-    await _skipTo(_nextIndex(), autoplay: _playing);
+    await _skipTo(_nextIndex(), autoplay: true);
   }
 
   Future<void> _advanceFromCompletion() async {
@@ -474,7 +608,7 @@ class PlaybackStore extends ChangeNotifier implements MediaSessionHost {
       await seek(Duration.zero);
       return;
     }
-    await _skipTo(_previousIndex(), autoplay: _playing);
+    await _skipTo(_previousIndex(), autoplay: true);
   }
 
   int _nextIndex() {
@@ -533,7 +667,9 @@ class PlaybackStore extends ChangeNotifier implements MediaSessionHost {
     }
     if (!keepLyrics) {
       _lyrics.clear();
-      _position = Duration.zero;
+      if (resumeAt == null) {
+        _position = Duration.zero;
+      }
       _qualities.clear();
       _selectedQualityId = 0;
     }
@@ -557,6 +693,41 @@ class PlaybackStore extends ChangeNotifier implements MediaSessionHost {
           _queue[0] = playableTrack;
         }
       }
+      final local = offline.fileFor(playableTrack);
+      if (local != null) {
+        final player = await _ensurePlayer();
+        if (gen != _startGen) {
+          return;
+        }
+        await player.setFilePath(local.path);
+        if (gen != _startGen) {
+          return;
+        }
+        await _applyOutputVolume();
+        if (resumeAt != null && resumeAt > Duration.zero) {
+          await player.seek(resumeAt);
+          _position = resumeAt;
+        }
+        if (gen != _startGen) {
+          return;
+        }
+        if (_wantPlaying) {
+          await _audioSession?.setActive(true);
+          unawaited(player.play());
+          _playing = true;
+        } else {
+          unawaited(player.pause());
+          _playing = false;
+        }
+        _loading = false;
+        _remember(playableTrack);
+        notifyListeners();
+        unawaited(_syncLikeFromRemote(_queue[_index]));
+        if (!keepLyrics) {
+          unawaited(_loadLyrics(_queue[_index]));
+        }
+        return;
+      }
       final extracted = await bili.extractAudio(
         playableTrack,
         qualityId: _preferredQualityId,
@@ -571,7 +742,9 @@ class PlaybackStore extends ChangeNotifier implements MediaSessionHost {
       _selectedQualityId = extracted.selectedId;
       _queue[_index] = playable.copyWith(
         title: playable.title.isEmpty ? current.title : playable.title,
-        albumTitle: playable.albumTitle.isEmpty ? current.albumTitle : playable.albumTitle,
+        albumTitle: playable.albumTitle.isEmpty
+            ? current.albumTitle
+            : playable.albumTitle,
       );
       final url = playable.audioUrl.isEmpty
           ? ''
@@ -583,14 +756,7 @@ class PlaybackStore extends ChangeNotifier implements MediaSessionHost {
       if (gen != _startGen) {
         return;
       }
-      await player.setUrl(
-        url,
-        headers: const {
-          'Referer': 'https://www.bilibili.com',
-          'User-Agent':
-              'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/125.0.0.0 Mobile Safari/537.36',
-        },
-      );
+      await player.setUrl(url);
       if (gen != _startGen) {
         return;
       }
@@ -604,13 +770,16 @@ class PlaybackStore extends ChangeNotifier implements MediaSessionHost {
       }
       if (_wantPlaying) {
         await _audioSession?.setActive(true);
-        await player.play();
+        unawaited(player.play());
         _playing = true;
       } else {
-        await player.pause();
+        unawaited(player.pause());
         _playing = false;
       }
+      _loading = false;
       _remember(playable);
+      notifyListeners();
+      unawaited(_syncLikeFromRemote(_queue[_index]));
       if (!keepLyrics) {
         unawaited(_loadLyrics(_queue[_index]));
       }
@@ -657,10 +826,12 @@ class PlaybackStore extends ChangeNotifier implements MediaSessionHost {
   }
 
   void _remember(MeluneTrack current) {
-    _recent.removeWhere((item) => item.id == current.id || item.bvid == current.bvid);
+    _recent.removeWhere(
+      (item) => item.id == current.id || item.bvid == current.bvid,
+    );
     _recent.insert(0, current);
-    if (_recent.length > 20) {
-      _recent.removeLast();
+    if (_recent.length > 80) {
+      _recent.removeRange(80, _recent.length);
     }
   }
 
@@ -712,16 +883,43 @@ class PlaybackStore extends ChangeNotifier implements MediaSessionHost {
     await _player?.setVolume(output);
   }
 
+  Future<void> _applySkipSilence() async {
+    try {
+      await _player?.setSkipSilenceEnabled(AppSettings.instance.skipSilence);
+    } catch (_) {}
+  }
+
+  Future<void> applyOutputSettings() async {
+    await _applySkipSilence();
+    await MeluneEqualizer.applyFromSettings(android: _androidEq);
+    _pushDesktopLyric(force: true);
+    notifyListeners();
+  }
+
   Future<AudioPlayer> _ensurePlayer() async {
     final existing = _player;
     if (existing != null) {
       return existing;
     }
     await _bindAudioFocus();
-    final player = AudioPlayer(handleInterruptions: false);
+    AudioPipeline? pipeline;
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      _androidEq = AndroidEqualizer();
+      pipeline = AudioPipeline(androidAudioEffects: [_androidEq!]);
+    }
+    final player = AudioPlayer(
+      handleInterruptions: false,
+      useProxyForRequestHeaders: false,
+      audioPipeline: pipeline,
+    );
     _player = player;
     await _applyOutputVolume();
+    await _applySkipSilence();
+    unawaited(MeluneEqualizer.applyFromSettings(android: _androidEq));
     _positionSub = player.positionStream.listen((value) {
+      if (_loading && value > Duration.zero) {
+        _loading = false;
+      }
       if (value <= Duration.zero &&
           _playing &&
           _position > const Duration(seconds: 2)) {
@@ -738,15 +936,18 @@ class PlaybackStore extends ChangeNotifier implements MediaSessionHost {
       }
     });
     _stateSub = player.playerStateStream.listen((state) {
-      if (_loading) {
-        return;
-      }
-      _playing = state.playing;
-      _wantPlaying = state.playing;
       if (state.playing) {
+        _playing = true;
+        _wantPlaying = true;
+        if (_loading) {
+          _loading = false;
+        }
         unawaited(_audioSession?.setActive(true));
+      } else if (!_loading) {
+        _playing = false;
+        _wantPlaying = false;
       }
-      if (state.processingState == ProcessingState.completed) {
+      if (!_loading && state.processingState == ProcessingState.completed) {
         unawaited(_advanceFromCompletion());
       }
       notifyListeners();
@@ -786,6 +987,133 @@ class PlaybackStore extends ChangeNotifier implements MediaSessionHost {
     super.notifyListeners();
     media?.syncFrom(this);
     windows?.syncFrom(this);
+    _schedulePersist();
+  }
+
+  File? get _persistFile {
+    final dir = persistDir;
+    if (dir == null || dir.isEmpty) {
+      return null;
+    }
+    return File('$dir${Platform.pathSeparator}playback.json');
+  }
+
+  void _schedulePersist() {
+    if (_persistFile == null) {
+      return;
+    }
+    _persistTimer ??= Timer(const Duration(seconds: 4), persistNow);
+  }
+
+  void persistNow() {
+    _persistTimer?.cancel();
+    _persistTimer = null;
+    _persistNow();
+  }
+
+  Future<void> restore() async {
+    await offline.restore();
+    final file = _persistFile;
+    if (file == null || !file.existsSync()) {
+      return;
+    }
+    try {
+      final raw = jsonDecode(await file.readAsString());
+      if (raw is! Map) {
+        return;
+      }
+      final queue = (raw['queue'] as List? ?? [])
+          .map(MeluneTrack.tryParse)
+          .whereType<MeluneTrack>()
+          .toList();
+      final recent = (raw['recent'] as List? ?? [])
+          .map(MeluneTrack.tryParse)
+          .whereType<MeluneTrack>()
+          .toList();
+      final liked = (raw['liked'] as List? ?? [])
+          .map(MeluneTrack.tryParse)
+          .whereType<MeluneTrack>();
+      _recent
+        ..clear()
+        ..addAll(recent);
+      _likedTracks
+        ..clear()
+        ..addEntries(liked.map((item) => MapEntry(item.id, item)));
+      _preferredQualityId = AppSettings.instance.preferredQualityId;
+      if (queue.isEmpty) {
+        _volume = ((raw['volume'] as num?)?.toDouble() ??
+                AppSettings.instance.volume)
+            .clamp(0.0, 1.0);
+        final modeIndex =
+            (raw['mode'] as num?)?.toInt() ??
+            AppSettings.instance.playbackModeIndex;
+        if (modeIndex >= 0 && modeIndex < PlaybackMode.values.length) {
+          _mode = PlaybackMode.values[modeIndex];
+        }
+        notifyListeners();
+        return;
+      }
+      _queue
+        ..clear()
+        ..addAll(queue);
+      _index = ((raw['index'] as num?)?.toInt() ?? 0).clamp(
+        0,
+        _queue.length - 1,
+      );
+      _position = Duration(
+        milliseconds: (raw['positionMs'] as num?)?.toInt() ?? 0,
+      );
+      _duration = track?.duration ?? Duration.zero;
+      _volume = ((raw['volume'] as num?)?.toDouble() ?? _volume).clamp(
+        0.0,
+        1.0,
+      );
+      final modeIndex = (raw['mode'] as num?)?.toInt() ?? 0;
+      if (modeIndex >= 0 && modeIndex < PlaybackMode.values.length) {
+        _mode = PlaybackMode.values[modeIndex];
+      }
+      _desktopLyricOpen =
+          AppSettings.instance.desktopLyricOnStart ||
+          raw['desktopLyricOpen'] == true;
+      _desktopLyricLocked =
+          AppSettings.instance.lyricLocked || raw['desktopLyricLocked'] == true;
+      _lyricEffect = AppSettings.instance.lyricEffect;
+      if (_lyricEffect == DesktopLyricEffect.reel) {
+        _lyricEffect = DesktopLyricEffect.parse(raw['lyricEffect']);
+      }
+      _playing = false;
+      _wantPlaying = false;
+      _loading = false;
+      notifyListeners();
+      _pushDesktopLyric(force: true);
+      if (AppSettings.instance.resumeAutoplay) {
+        await _startCurrent(resumeAt: _position, autoplay: true);
+      }
+    } catch (_) {}
+  }
+
+  void _persistNow() {
+    final file = _persistFile;
+    if (file == null) {
+      return;
+    }
+    try {
+      file.writeAsStringSync(
+        jsonEncode({
+          'index': _index,
+          'positionMs': _position.inMilliseconds,
+          'volume': _volume,
+          'mode': _mode.index,
+          'desktopLyricOpen': _desktopLyricOpen,
+          'desktopLyricLocked': _desktopLyricLocked,
+          'lyricEffect': _lyricEffect.name,
+          'queue': _queue.map((item) => item.toJson()).toList(),
+          'recent': _recent.map((item) => item.toJson()).toList(),
+          'liked': _likedTracks.values.map((item) => item.toJson()).toList(),
+        }),
+        flush: true,
+      );
+    } catch (_) {}
   }
 
   void _refreshSessionEpoch() {
@@ -813,6 +1141,11 @@ class PlaybackStore extends ChangeNotifier implements MediaSessionHost {
       _desktopLyricOpen = false;
       _pushDesktopLyric(force: true);
     }
+    _lifecycle?.detach();
+    _lifecycle = null;
+    persistNow();
+    favorites.dispose();
+    offline.dispose();
     unawaited(_positionSub?.cancel());
     unawaited(_stateSub?.cancel());
     unawaited(_durationSub?.cancel());
@@ -820,6 +1153,30 @@ class PlaybackStore extends ChangeNotifier implements MediaSessionHost {
     unawaited(_noisySub?.cancel());
     unawaited(_player?.dispose());
     super.dispose();
+  }
+}
+
+class _PlaybackLifecycle with WidgetsBindingObserver {
+  _PlaybackLifecycle(this._store);
+
+  final PlaybackStore _store;
+
+  void attach() {
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  void detach() {
+    WidgetsBinding.instance.removeObserver(this);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      _store.persistNow();
+    }
   }
 }
 

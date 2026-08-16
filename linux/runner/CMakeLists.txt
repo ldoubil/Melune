@@ -18,6 +18,8 @@ apply_standard_settings(${BINARY_NAME})
 
 # Add preprocessor definitions for the application ID.
 add_definitions(-DAPPLICATION_ID="${APPLICATION_ID}")
+target_compile_definitions(${BINARY_NAME} PRIVATE
+  APPLICATION_ICON="${CMAKE_SOURCE_DIR}/melune.png")
 
 # Add dependency libraries. Add any application-specific dependencies here.
 target_link_libraries(${BINARY_NAME} PRIVATE flutter)

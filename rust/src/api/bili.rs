@@ -67,6 +67,7 @@ pub struct BiliFavoriteFolder {
     pub title: String,
     pub media_count: i32,
     pub cover_url: String,
+    pub fav_state: bool,
 }
 
 pub struct BiliHistoryPage {
@@ -74,6 +75,15 @@ pub struct BiliHistoryPage {
     pub has_more: bool,
     pub cursor_max: i64,
     pub cursor_view_at: i64,
+}
+
+pub struct BiliUpProfile {
+    pub mid: i64,
+    pub name: String,
+    pub face: String,
+    pub sign: String,
+    pub fans: i64,
+    pub archive_count: i32,
 }
 
 pub struct BiliLyricLine {
@@ -104,9 +114,14 @@ pub struct BiliExtractedAudio {
 
 #[flutter_rust_bridge::frb]
 pub fn bili_init(cookie_dir: String) -> Result<BiliInitResult, String> {
+    crate::bili::outbound::set_cookie_dir(&cookie_dir);
     let session = Session::open(&cookie_dir)?;
     let mut session = session;
-    let nav = session.nav().unwrap_or_else(|_| empty_nav());
+    let nav = session
+        .nav()
+        .ok()
+        .or_else(|| session.cached_nav())
+        .unwrap_or_else(empty_nav);
     let user = map_user(&nav);
     let mut guard = STATE.lock();
     if let Some(state) = guard.as_mut() {
@@ -146,7 +161,15 @@ pub fn bili_proxy_url(audio_url: String) -> Result<String, String> {
 
 #[flutter_rust_bridge::frb]
 pub fn bili_nav() -> Result<BiliUser, String> {
-    with_state(|state| Ok(map_user(&state.session.nav()?)))
+    with_state(|state| {
+        let nav = state
+            .session
+            .nav()
+            .ok()
+            .or_else(|| state.session.cached_nav())
+            .ok_or_else(|| "无法读取登录状态".to_string())?;
+        Ok(map_user(&nav))
+    })
 }
 
 #[flutter_rust_bridge::frb]
@@ -399,46 +422,82 @@ fn unique_by_bvid(tracks: Vec<BiliTrack>) -> Vec<BiliTrack> {
 
 #[flutter_rust_bridge::frb]
 pub fn bili_music_region(page: u32) -> Result<Vec<BiliTrack>, String> {
-    with_state(|state| {
-        let page = page.max(1);
-        // 音乐区近 3 日热门；旧的 newlist 只按投稿时间。
-        if page == 1 {
-            if let Ok(data) = state.session.ranking_region(3, 3) {
-                let tracks = collect_music_archives(&data, true);
-                if !tracks.is_empty() {
-                    return Ok(unique_by_bvid(tracks));
-                }
+    with_state(|state| Ok(load_zone_tracks(&mut state.session, 3, page)))
+}
+
+#[flutter_rust_bridge::frb]
+pub fn bili_music_zone(cate_id: i64, page: u32) -> Result<Vec<BiliTrack>, String> {
+    with_state(|state| Ok(load_zone_tracks(&mut state.session, cate_id, page)))
+}
+
+fn load_zone_tracks(session: &mut crate::bili::Session, cate_id: i64, page: u32) -> Vec<BiliTrack> {
+    let page = page.max(1);
+    let all_music = cate_id <= 0 || cate_id == 3;
+    if all_music && page == 1 {
+        if let Ok(data) = session.ranking_region(3, 7) {
+            let tracks = collect_music_archives(&data, true);
+            if !tracks.is_empty() {
+                return unique_by_bvid(tracks);
             }
         }
-        for (cate_id, days) in [(130, 3), (31, 3)] {
-            if let Ok(payload) = state.session.cate_hot(cate_id, days, page, 20) {
-                let tracks = collect_hot_items(&payload);
-                if !tracks.is_empty() {
-                    return Ok(unique_by_bvid(tracks));
-                }
-            }
-            if let Ok(payload) = state.session.newlist_rank(cate_id, days, page, 20) {
-                let tracks = collect_hot_items(&payload);
-                if !tracks.is_empty() {
-                    return Ok(unique_by_bvid(tracks));
-                }
+    }
+    let cates: &[(i64, u32)] = if all_music {
+        &[(28, 7), (31, 7), (30, 7)]
+    } else {
+        &[(cate_id, 7)]
+    };
+    let mut buckets = Vec::new();
+    for (id, days) in cates.iter().copied() {
+        let mut batch = Vec::new();
+        if let Ok(payload) = session.cate_hot(id, days, page, 16) {
+            batch = collect_hot_items(&payload);
+        }
+        if batch.is_empty() {
+            if let Ok(payload) = session.newlist_rank(id, days, page, 16) {
+                batch = collect_hot_items(&payload);
             }
         }
-        for data in [
-            state.session.music_region(page, 20),
-            state.session.newlist(3, page, 20),
-        ] {
+        if !batch.is_empty() {
+            buckets.push(batch);
+        }
+        if !all_music && !buckets.is_empty() {
+            break;
+        }
+    }
+    if !buckets.is_empty() {
+        return unique_by_bvid(interleave_tracks(buckets));
+    }
+    if all_music {
+        for data in [session.music_region(page, 20), session.newlist(3, page, 20)] {
             let Ok(data) = data else {
                 continue;
             };
             let mut tracks = collect_music_archives(&data, true);
             if !tracks.is_empty() {
                 tracks.sort_by(|a, b| b.play_count.cmp(&a.play_count));
-                return Ok(unique_by_bvid(tracks));
+                return unique_by_bvid(tracks);
             }
         }
-        Ok(vec![])
-    })
+    }
+    Vec::new()
+}
+
+fn interleave_tracks(mut buckets: Vec<Vec<BiliTrack>>) -> Vec<BiliTrack> {
+    let mut out = Vec::new();
+    loop {
+        let mut progressed = false;
+        for bucket in buckets.iter_mut() {
+            if bucket.is_empty() {
+                continue;
+            }
+            out.push(bucket.remove(0));
+            progressed = true;
+        }
+        if !progressed {
+            break;
+        }
+    }
+    out
 }
 
 #[flutter_rust_bridge::frb]
@@ -447,7 +506,11 @@ pub fn bili_music_recommend() -> Result<Vec<BiliTrack>, String> {
         let Ok(data) = state.session.top_rcmd(20) else {
             return Ok(vec![]);
         };
-        Ok(collect_music_archives(&data, false))
+        let mut tracks = collect_music_archives(&data, false);
+        if tracks.is_empty() {
+            tracks = collect_music_archives(&data, true);
+        }
+        Ok(tracks)
     })
 }
 
@@ -472,39 +535,53 @@ fn json_list(data: &Value) -> Vec<Value> {
 }
 
 #[flutter_rust_bridge::frb]
-pub fn bili_favorite_folders() -> Result<Vec<BiliFavoriteFolder>, String> {
+pub fn bili_favorite_folders(rid: i64) -> Result<Vec<BiliFavoriteFolder>, String> {
     with_state(|state| {
-        let nav = state.session.nav()?;
-        let mid = as_i64(&nav["mid"]);
+        let mid = state.session.user_mid();
         if mid <= 0 {
             return Ok(vec![]);
         }
-        let data = state.session.favorite_folders(mid)?;
+        let data = state.session.favorite_folders(mid, rid.max(0))?;
         Ok(data["list"]
             .as_array()
             .cloned()
             .unwrap_or_default()
             .into_iter()
-            .map(|item| {
-                let id = as_i64(&item["id"]);
-                let mut cover = https_url(&json_str(&item["cover"]));
-                if let Ok(list) = state.session.favorite_list(id, 1, 1) {
-                    if let Some(first) = list["medias"].as_array().and_then(|arr| arr.first()) {
-                        let first_cover =
-                            https_url(&first_str(&[&first["cover"], &first["pic"]]));
-                        if !first_cover.is_empty() {
-                            cover = first_cover;
-                        }
-                    }
-                }
-                BiliFavoriteFolder {
-                    id,
-                    title: json_str(&item["title"]),
-                    media_count: as_i64(&item["media_count"]) as i32,
-                    cover_url: cover,
-                }
-            })
+            .filter_map(map_favorite_folder)
             .collect())
+    })
+}
+
+#[flutter_rust_bridge::frb]
+pub fn bili_create_favorite_folder(title: String) -> Result<BiliFavoriteFolder, String> {
+    with_state(|state| {
+        let data = state.session.favorite_folder_add(title.trim())?;
+        map_favorite_folder(data).ok_or_else(|| "创建收藏夹失败".to_string())
+    })
+}
+
+#[flutter_rust_bridge::frb]
+pub fn bili_deal_favorite(
+    rid: i64,
+    bvid: String,
+    add_media_ids: String,
+    del_media_ids: String,
+) -> Result<(), String> {
+    with_state(|state| {
+        let mut avid = rid;
+        if avid <= 0 && !bvid.is_empty() {
+            let view = state.session.video_view(&bvid)?;
+            avid = as_i64(&view["aid"]);
+        }
+        if avid <= 0 {
+            return Err("缺少稿件 id，无法收藏".to_string());
+        }
+        state.session.favorite_resource_deal(
+            avid,
+            add_media_ids.trim(),
+            del_media_ids.trim(),
+        )?;
+        Ok(())
     })
 }
 
@@ -517,7 +594,7 @@ pub fn bili_favorite_tracks(media_id: i64, page: u32) -> Result<BiliSearchPage, 
             .cloned()
             .unwrap_or_default()
             .into_iter()
-            .filter(|item| is_music_entry(item, true))
+            .filter(|item| is_library_song(item))
             .filter_map(map_fav_item)
             .collect::<Vec<_>>();
         Ok(BiliSearchPage {
@@ -536,22 +613,99 @@ pub fn bili_favorite_tracks(media_id: i64, page: u32) -> Result<BiliSearchPage, 
 #[flutter_rust_bridge::frb]
 pub fn bili_history(cursor_max: i64, cursor_view_at: i64) -> Result<BiliHistoryPage, String> {
     with_state(|state| {
-        let data = state.session.history(cursor_max, cursor_view_at, 30)?;
-        let tracks = data["list"]
+        let mut tracks = Vec::new();
+        let mut max = cursor_max;
+        let mut view = cursor_view_at;
+        let mut pages = 0;
+        let mut next_max = 0;
+        let mut next_view = 0;
+        while pages < 3 && tracks.len() < 24 {
+            let data = state.session.history(max, view, 30)?;
+            pages += 1;
+            next_max = as_i64(&data["cursor"]["max"]);
+            next_view = as_i64(&data["cursor"]["view_at"]);
+            tracks.extend(
+                data["list"]
+                    .as_array()
+                    .cloned()
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter(|item| {
+                        let business = json_str(&item["history"]["business"]);
+                        (business.is_empty() || business == "archive") && is_library_song(item)
+                    })
+                    .filter_map(map_history_item),
+            );
+            if (next_max == 0 && next_view == 0) || (next_max == max && next_view == view) {
+                next_max = 0;
+                next_view = 0;
+                break;
+            }
+            max = next_max;
+            view = next_view;
+        }
+        Ok(BiliHistoryPage {
+            has_more: next_max > 0 || next_view > 0,
+            tracks,
+            cursor_max: next_max,
+            cursor_view_at: next_view,
+        })
+    })
+}
+
+#[flutter_rust_bridge::frb]
+pub fn bili_user_card(mid: i64) -> Result<BiliUpProfile, String> {
+    with_state(|state| {
+        if mid <= 0 {
+            return Err("缺少用户 mid".to_string());
+        }
+        let data = state.session.user_card(mid)?;
+        let card = &data["card"];
+        Ok(BiliUpProfile {
+            mid: as_i64(&card["mid"]).max(mid),
+            name: first_str(&[&card["name"], &card["uname"]]),
+            face: https_url(&first_str(&[&card["face"], &card["avatar"]])),
+            sign: json_str(&card["sign"]),
+            fans: first_i64(&[&card["fans"], &data["follower"]]),
+            archive_count: as_i64(&data["archive_count"]) as i32,
+        })
+    })
+}
+
+#[flutter_rust_bridge::frb]
+pub fn bili_user_archives(mid: i64, page: u32) -> Result<BiliSearchPage, String> {
+    with_state(|state| {
+        if mid <= 0 {
+            return Err("缺少用户 mid".to_string());
+        }
+        let page = page.max(1);
+        let data = state.session.space_archives(mid, page, 30)?;
+        let items = data["list"]["vlist"]
             .as_array()
             .cloned()
             .unwrap_or_default()
             .into_iter()
-            .filter(|item| is_music_entry(item, true))
-            .filter_map(map_history_item)
+            .filter(|item| is_library_song(item))
+            .filter_map(|item| {
+                let mut track = map_archive_item(item)?;
+                if track.up_mid <= 0 {
+                    track.up_mid = mid;
+                }
+                Some(track)
+            })
             .collect::<Vec<_>>();
-        let next_max = as_i64(&data["cursor"]["max"]);
-        let next_view = as_i64(&data["cursor"]["view_at"]);
-        Ok(BiliHistoryPage {
-            has_more: !tracks.is_empty() && (next_max > 0 || next_view > 0),
-            tracks,
-            cursor_max: next_max,
-            cursor_view_at: next_view,
+        let total = first_i64(&[&data["page"]["count"], &data["page"]["pn"]]);
+        let page_size = as_i64(&data["page"]["ps"]).max(30);
+        let total_pages = if page_size > 0 {
+            ((total + page_size - 1) / page_size).max(1)
+        } else {
+            page as i64
+        };
+        Ok(BiliSearchPage {
+            items,
+            page,
+            total_pages: total_pages as u32,
+            total_results: total,
         })
     })
 }
@@ -731,6 +885,27 @@ fn is_music_entry(item: &Value, assume_music: bool) -> bool {
     assume_music
 }
 
+fn is_library_song(item: &Value) -> bool {
+    if !is_music_entry(item, true) {
+        return false;
+    }
+    let tid = first_i64(&[&item["typeid"], &item["tid"], &item["type_id"]]);
+    if is_song_tid(tid) || is_music_tid(tid) {
+        return true;
+    }
+    if is_music_label(&json_str(&item["typename"]))
+        || is_music_label(&json_str(&item["tname"]))
+        || is_music_label(&json_str(&item["tag"]))
+        || !json_str(&item["music_id"]).is_empty()
+        || looks_like_song_collection(&json_str(&item["title"]))
+        || page_count_of(item) > 1
+    {
+        return true;
+    }
+    let duration = duration_sec_of(item);
+    duration == 0 || (duration >= 25 && duration <= 12 * 60)
+}
+
 fn map_search_item(item: Value) -> Option<BiliTrack> {
     let bvid = json_str(&item["bvid"]);
     if bvid.is_empty() {
@@ -863,6 +1038,20 @@ fn map_music_center(item: Value) -> Option<BiliTrack> {
         page_count: page_count_of(related).max(page_count_of(&item)),
         season_id: season_id_of(&item),
         up_mid: up_mid_of(&item),
+    })
+}
+
+fn map_favorite_folder(item: Value) -> Option<BiliFavoriteFolder> {
+    let id = as_i64(&item["id"]);
+    if id <= 0 {
+        return None;
+    }
+    Some(BiliFavoriteFolder {
+        id,
+        title: json_str(&item["title"]),
+        media_count: as_i64(&item["media_count"]) as i32,
+        cover_url: https_url(&json_str(&item["cover"])),
+        fav_state: item["fav_state"].as_bool().unwrap_or(false) || as_i64(&item["fav_state"]) > 0,
     })
 }
 
@@ -1296,6 +1485,17 @@ mod tests {
         assert!(!super::is_music_entry(&concert, true));
         assert!(!super::is_music_entry(&lesson, true));
         assert!(!super::is_music_entry(&game, true));
+        let anime = json!({
+            "title": "某动画 第12话",
+            "duration": 1440,
+            "history": { "business": "archive", "bvid": "BV1xxx" }
+        });
+        let cover = json!({
+            "title": "夜航 翻唱",
+            "duration": 210
+        });
+        assert!(!super::is_library_song(&anime));
+        assert!(super::is_library_song(&cover));
         assert_eq!(super::page_count_of(&json!({"videos": 1})), 1);
         assert_eq!(super::page_count_of(&json!({"videos": "12"})), 12);
         assert_eq!(

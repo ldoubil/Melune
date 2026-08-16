@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-enum MeluneTab { home, search, favorites, settings }
+enum MeluneTab { home, discover, favorites, settings }
 
 class MeluneDestination {
   const MeluneDestination({
@@ -24,18 +24,19 @@ const kMeluneMainDestinations = [
     selectedIcon: Icons.home,
   ),
   MeluneDestination(
-    tab: MeluneTab.search,
-    label: '搜索',
-    icon: Icons.search,
-    selectedIcon: Icons.search,
-  ),
-  MeluneDestination(
-    tab: MeluneTab.favorites,
-    label: '收藏',
-    icon: Icons.favorite_outline,
-    selectedIcon: Icons.favorite,
+    tab: MeluneTab.discover,
+    label: '发现',
+    icon: Icons.explore_outlined,
+    selectedIcon: Icons.explore,
   ),
 ];
+
+const kMeluneFavoritesDestination = MeluneDestination(
+  tab: MeluneTab.favorites,
+  label: '收藏',
+  icon: Icons.favorite_outline,
+  selectedIcon: Icons.favorite,
+);
 
 const kMeluneSettingsDestination = MeluneDestination(
   tab: MeluneTab.settings,
@@ -46,7 +47,9 @@ const kMeluneSettingsDestination = MeluneDestination(
 
 const kMeluneDestinations = [
   ...kMeluneMainDestinations,
+  kMeluneFavoritesDestination,
   kMeluneSettingsDestination,
 ];
 
+const kMeluneFavoritesIndex = 2;
 const kMeluneSettingsIndex = 3;

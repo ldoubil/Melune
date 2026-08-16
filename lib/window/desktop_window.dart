@@ -1,3 +1,8 @@
+import 'dart:async';
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
+import 'package:melune/settings/app_settings.dart';
 import 'package:melune/window/window_controller.dart';
 import 'package:window_manager/window_manager.dart';
 
@@ -11,6 +16,14 @@ Future<WindowController> bootstrapWindow() async {
     windowButtonVisibility: false,
   );
   await windowManager.setTitle('Melune · 洛音');
+  await windowManager.setPreventClose(true);
+  try {
+    await windowManager.setIcon(
+      defaultTargetPlatform == TargetPlatform.windows
+          ? 'assets/tray/app_icon.ico'
+          : 'assets/icon/app_icon.png',
+    );
+  } catch (_) {}
   return DesktopWindowController();
 }
 
@@ -21,12 +34,17 @@ class DesktopWindowController extends WindowController with WindowListener {
   }
 
   bool _maximized = false;
+  var _hiddenToTray = false;
+  var _quitting = false;
 
   @override
   bool get enabled => true;
 
   @override
   bool get isMaximized => _maximized;
+
+  @override
+  bool get hiddenToTray => _hiddenToTray;
 
   @override
   void dispose() {
@@ -47,10 +65,68 @@ class DesktopWindowController extends WindowController with WindowListener {
   }
 
   @override
-  Future<void> close() => windowManager.close();
+  Future<void> close() async {
+    if (AppSettings.instance.closeToTray) {
+      await hideToTray();
+      return;
+    }
+    await quit();
+  }
+
+  @override
+  Future<void> hideToTray() async {
+    if (_quitting) {
+      return;
+    }
+    _hiddenToTray = true;
+    notifyListeners();
+    try {
+      await windowManager.hide();
+      await windowManager.setSkipTaskbar(true);
+    } catch (_) {}
+  }
+
+  @override
+  Future<void> showFromTray() async {
+    _hiddenToTray = false;
+    notifyListeners();
+    try {
+      await windowManager.setSkipTaskbar(false);
+      if (await windowManager.isMinimized()) {
+        await windowManager.restore();
+      }
+      await windowManager.show();
+      await windowManager.focus();
+    } catch (_) {}
+  }
+
+  @override
+  Future<void> quit() async {
+    if (_quitting) {
+      return;
+    }
+    _quitting = true;
+    try {
+      await windowManager.setPreventClose(false);
+      await windowManager.destroy();
+    } catch (_) {}
+    exit(0);
+  }
 
   @override
   Future<void> startDragging() => windowManager.startDragging();
+
+  @override
+  void onWindowClose() {
+    if (_quitting) {
+      return;
+    }
+    if (AppSettings.instance.closeToTray) {
+      unawaited(hideToTray());
+      return;
+    }
+    unawaited(quit());
+  }
 
   @override
   void onWindowMaximize() {

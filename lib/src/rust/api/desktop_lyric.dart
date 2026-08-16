@@ -6,7 +6,7 @@
 import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-/// 桌面歌词：Windows 上开一层置顶分层窗口，其它平台为空操作。
+/// 桌面歌词已改由 Flutter 第二窗口渲染，这里只保留 FRB 符号以免重新 generate。
 void desktopLyricSet({
   required bool visible,
   required bool locked,

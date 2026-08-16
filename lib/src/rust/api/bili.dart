@@ -6,7 +6,7 @@
 import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `as_i64`, `audio_quality_detail`, `audio_quality_from_item`, `audio_quality_label`, `audio_quality_rank`, `clean_title`, `collect_audio_qualities`, `collect_hot_items`, `collect_music_archives`, `duration_sec_of`, `empty_nav`, `extract_book_title`, `first_i64`, `first_str`, `https_url`, `is_music_entry`, `is_music_label`, `is_music_tid`, `is_non_song_tid`, `is_rejected_song_title`, `is_song_duration`, `is_song_tid`, `is_vip_audio`, `is_vip`, `json_list`, `json_str`, `looks_like_song_collection`, `map_archive_item`, `map_fav_item`, `map_history_item`, `map_lyric_line`, `map_music_center`, `map_search_item`, `map_user`, `map_video_pages`, `page_count_of`, `parse_duration`, `pick_audio_quality`, `season_id_of`, `stream_url`, `strip_html`, `subtitle_rank`, `track_id`, `unique_by_bvid`, `up_mid_of`, `with_state`
+// These functions are ignored because they are not marked as `pub`: `as_i64`, `audio_quality_detail`, `audio_quality_from_item`, `audio_quality_label`, `audio_quality_rank`, `clean_title`, `collect_audio_qualities`, `collect_hot_items`, `collect_music_archives`, `duration_sec_of`, `empty_nav`, `extract_book_title`, `fill_page_counts`, `first_i64`, `first_str`, `https_url`, `interleave_tracks`, `is_library_song`, `is_music_entry`, `is_music_label`, `is_music_tid`, `is_non_song_tid`, `is_rejected_song_title`, `is_song_duration`, `is_song_tid`, `is_vip_audio`, `is_vip`, `json_list`, `json_str`, `load_zone_tracks`, `looks_like_song_collection`, `map_archive_item`, `map_fav_item`, `map_favorite_folder`, `map_history_item`, `map_lyric_line`, `map_music_center`, `map_search_item`, `map_user`, `map_video_pages`, `page_count_of`, `parse_duration`, `pick_audio_quality`, `season_id_of`, `stream_url`, `strip_html`, `subtitle_rank`, `track_id`, `unique_by_bvid`, `up_mid_of`, `with_state`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `BiliState`
 
 Future<BiliInitResult> biliInit({required String cookieDir}) =>
@@ -62,11 +62,33 @@ Future<List<BiliTrack>> biliNewSongs() =>
 Future<List<BiliTrack>> biliMusicRegion({required int page}) =>
     RustLib.instance.api.crateApiBiliBiliMusicRegion(page: page);
 
+Future<List<BiliTrack>> biliMusicZone({
+  required PlatformInt64 cateId,
+  required int page,
+}) =>
+    RustLib.instance.api.crateApiBiliBiliMusicZone(cateId: cateId, page: page);
+
 Future<List<BiliTrack>> biliMusicRecommend() =>
     RustLib.instance.api.crateApiBiliBiliMusicRecommend();
 
-Future<List<BiliFavoriteFolder>> biliFavoriteFolders() =>
-    RustLib.instance.api.crateApiBiliBiliFavoriteFolders();
+Future<List<BiliFavoriteFolder>> biliFavoriteFolders({
+  required PlatformInt64 rid,
+}) => RustLib.instance.api.crateApiBiliBiliFavoriteFolders(rid: rid);
+
+Future<BiliFavoriteFolder> biliCreateFavoriteFolder({required String title}) =>
+    RustLib.instance.api.crateApiBiliBiliCreateFavoriteFolder(title: title);
+
+Future<void> biliDealFavorite({
+  required PlatformInt64 rid,
+  required String bvid,
+  required String addMediaIds,
+  required String delMediaIds,
+}) => RustLib.instance.api.crateApiBiliBiliDealFavorite(
+  rid: rid,
+  bvid: bvid,
+  addMediaIds: addMediaIds,
+  delMediaIds: delMediaIds,
+);
 
 Future<BiliSearchPage> biliFavoriteTracks({
   required PlatformInt64 mediaId,
@@ -83,6 +105,14 @@ Future<BiliHistoryPage> biliHistory({
   cursorMax: cursorMax,
   cursorViewAt: cursorViewAt,
 );
+
+Future<BiliUpProfile> biliUserCard({required PlatformInt64 mid}) =>
+    RustLib.instance.api.crateApiBiliBiliUserCard(mid: mid);
+
+Future<BiliSearchPage> biliUserArchives({
+  required PlatformInt64 mid,
+  required int page,
+}) => RustLib.instance.api.crateApiBiliBiliUserArchives(mid: mid, page: page);
 
 Future<List<BiliLyricLine>> biliOfficialLyrics({
   required String bvid,
@@ -160,17 +190,23 @@ class BiliFavoriteFolder {
   final String title;
   final int mediaCount;
   final String coverUrl;
+  final bool favState;
 
   const BiliFavoriteFolder({
     required this.id,
     required this.title,
     required this.mediaCount,
     required this.coverUrl,
+    required this.favState,
   });
 
   @override
   int get hashCode =>
-      id.hashCode ^ title.hashCode ^ mediaCount.hashCode ^ coverUrl.hashCode;
+      id.hashCode ^
+      title.hashCode ^
+      mediaCount.hashCode ^
+      coverUrl.hashCode ^
+      favState.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -180,7 +216,8 @@ class BiliFavoriteFolder {
           id == other.id &&
           title == other.title &&
           mediaCount == other.mediaCount &&
-          coverUrl == other.coverUrl;
+          coverUrl == other.coverUrl &&
+          favState == other.favState;
 }
 
 class BiliHistoryPage {
@@ -398,6 +435,45 @@ class BiliTrack {
           pageCount == other.pageCount &&
           seasonId == other.seasonId &&
           upMid == other.upMid;
+}
+
+class BiliUpProfile {
+  final PlatformInt64 mid;
+  final String name;
+  final String face;
+  final String sign;
+  final PlatformInt64 fans;
+  final int archiveCount;
+
+  const BiliUpProfile({
+    required this.mid,
+    required this.name,
+    required this.face,
+    required this.sign,
+    required this.fans,
+    required this.archiveCount,
+  });
+
+  @override
+  int get hashCode =>
+      mid.hashCode ^
+      name.hashCode ^
+      face.hashCode ^
+      sign.hashCode ^
+      fans.hashCode ^
+      archiveCount.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is BiliUpProfile &&
+          runtimeType == other.runtimeType &&
+          mid == other.mid &&
+          name == other.name &&
+          face == other.face &&
+          sign == other.sign &&
+          fans == other.fans &&
+          archiveCount == other.archiveCount;
 }
 
 class BiliUser {

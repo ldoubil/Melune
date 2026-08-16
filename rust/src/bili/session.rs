@@ -17,10 +17,12 @@ pub struct Session {
     cookies: HashMap<String, String>,
     cookie_path: PathBuf,
     wbi: Option<(WbiKeys, Instant)>,
+    json_cache: HashMap<String, (Instant, Value)>,
 }
 
 impl Session {
     pub fn open(cookie_dir: &str) -> Result<Self, String> {
+        super::outbound::set_cookie_dir(cookie_dir);
         let dir = PathBuf::from(cookie_dir.trim());
         fs::create_dir_all(&dir).map_err(|e| {
             format!("无法创建 cookie 目录 {}：{e}", dir.display())
@@ -32,6 +34,7 @@ impl Session {
             cookies,
             cookie_path,
             wbi: None,
+            json_cache: HashMap::new(),
         };
         session.persist()?;
         Ok(session)
@@ -50,10 +53,28 @@ impl Session {
             && self.cookies.contains_key("DedeUserID")
     }
 
+    pub fn user_mid(&self) -> i64 {
+        if let Some(cached) = self.load_user_cache() {
+            let mid = cached["mid"]
+                .as_i64()
+                .or_else(|| cached["mid"].as_str().and_then(|s| s.parse().ok()))
+                .unwrap_or(0);
+            if mid > 0 {
+                return mid;
+            }
+        }
+        self.cookies
+            .get("DedeUserID")
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(0)
+    }
+
     pub fn logout(&mut self) -> Result<(), String> {
         for key in ["SESSDATA", "bili_jct", "DedeUserID", "DedeUserID__ckMd5"] {
             self.cookies.remove(key);
         }
+        self.clear_user_cache();
+        self.json_cache.clear();
         self.persist()
     }
 
@@ -66,8 +87,12 @@ impl Session {
     }
 
     fn absorb_cookies(&mut self, resp: &Response) {
+        const LOGIN_KEYS: &[&str] = &["SESSDATA", "bili_jct", "DedeUserID", "DedeUserID__ckMd5"];
         for header in resp.all("set-cookie") {
             if let Some((name, value)) = parse_set_cookie(header) {
+                if LOGIN_KEYS.contains(&name.as_str()) && cookie_clears_login(&value) {
+                    continue;
+                }
                 self.cookies.insert(name, value);
             }
         }
@@ -81,11 +106,14 @@ impl Session {
         form: Option<&[(&str, &str)]>,
         redirects: u32,
     ) -> Result<Response, String> {
-        let agent = ureq::AgentBuilder::new()
-            .timeout(Duration::from_secs(25))
-            .user_agent(UA)
-            .redirects(redirects)
-            .build();
+        let agent = super::outbound::apply(
+            ureq::AgentBuilder::new()
+                .timeout(Duration::from_secs(25))
+                .user_agent(UA)
+                .redirects(redirects),
+            url,
+        )
+        .build();
         let mut req = if method == "POST" {
             agent.post(url)
         } else {
@@ -114,8 +142,20 @@ impl Session {
         } else {
             format!("{API}{path}")
         };
+        let key = json_cache_key(&url);
+        if should_cache_url(&url) {
+            if let Some((at, value)) = self.json_cache.get(&key) {
+                if at.elapsed() < Duration::from_secs(120) {
+                    return Ok(value.clone());
+                }
+            }
+        }
         let resp = self.request("GET", &url, referer, None, 8)?;
-        resp.into_json::<Value>().map_err(|e| e.to_string())
+        let body = resp.into_json::<Value>().map_err(|e| e.to_string())?;
+        if should_cache_url(&url) && body["code"].as_i64() == Some(0) {
+            self.json_cache.insert(key, (Instant::now(), body.clone()));
+        }
+        Ok(body)
     }
 
     fn require_data(&self, body: Value, path: &str) -> Result<Value, String> {
@@ -166,20 +206,100 @@ impl Session {
         self.require_data(body, path)
     }
 
+    fn csrf(&self) -> Result<String, String> {
+        self.cookies
+            .get("bili_jct")
+            .filter(|value| !value.is_empty())
+            .cloned()
+            .ok_or_else(|| "未登录，无法操作收藏夹".to_string())
+    }
+
+    fn post_form(&mut self, path: &str, form: &[(&str, &str)]) -> Result<Value, String> {
+        let url = format!("{API}{path}");
+        let resp = self.request("POST", &url, REFERER, Some(form), 8)?;
+        let body = resp.into_json::<Value>().map_err(|e| e.to_string())?;
+        self.require_data(body, path)
+    }
+
     pub fn nav(&mut self) -> Result<Value, String> {
-        let body = self.get_json("/x/web-interface/nav", REFERER)?;
-        if let Some(keys) = wbi::keys_from_nav(&body) {
-            self.wbi = Some((keys, Instant::now()));
+        match self.get_json("/x/web-interface/nav", REFERER) {
+            Ok(body) => self.parse_nav(body),
+            Err(err) => self.cached_nav().ok_or(err),
         }
-        if body["code"].as_i64().unwrap_or(-1) == 0 {
-            return Ok(body["data"].clone());
+    }
+
+    pub fn cached_nav(&self) -> Option<Value> {
+        if !self.is_logged_in() {
+            return None;
         }
-        Ok(json!({
-            "isLogin": false,
-            "mid": 0,
+        if let Some(cached) = self.load_user_cache() {
+            return Some(cached);
+        }
+        let mid = self
+            .cookies
+            .get("DedeUserID")
+            .and_then(|value| value.parse::<i64>().ok())
+            .unwrap_or(0);
+        Some(json!({
+            "isLogin": true,
+            "mid": mid,
             "uname": "",
             "face": "",
         }))
+    }
+
+    fn parse_nav(&mut self, body: Value) -> Result<Value, String> {
+        if let Some(keys) = wbi::keys_from_nav(&body) {
+            self.wbi = Some((keys, Instant::now()));
+        }
+        let code = body["code"].as_i64().unwrap_or(-1);
+        if code == 0 {
+            let data = body["data"].clone();
+            if data["isLogin"].as_bool().unwrap_or(false) {
+                self.cache_user(&data);
+            } else {
+                self.clear_user_cache();
+            }
+            return Ok(data);
+        }
+        if code == -101 {
+            self.clear_user_cache();
+            return Ok(json!({
+                "isLogin": false,
+                "mid": 0,
+                "uname": "",
+                "face": "",
+            }));
+        }
+        if let Some(cached) = self.cached_nav() {
+            return Ok(cached);
+        }
+        Err(format!("nav 失败: code={code}"))
+    }
+
+    fn user_cache_path(&self) -> PathBuf {
+        self.cookie_path.with_file_name("user.json")
+    }
+
+    fn cache_user(&self, data: &Value) {
+        let _ = fs::write(
+            self.user_cache_path(),
+            serde_json::to_string_pretty(data).unwrap_or_default(),
+        );
+    }
+
+    fn load_user_cache(&self) -> Option<Value> {
+        let text = fs::read_to_string(self.user_cache_path()).ok()?;
+        let value: Value = serde_json::from_str(&text).ok()?;
+        if value["isLogin"].as_bool().unwrap_or(false) {
+            Some(value)
+        } else {
+            None
+        }
+    }
+
+    fn clear_user_cache(&self) {
+        let _ = fs::remove_file(self.user_cache_path());
     }
 
     pub fn qr_generate(&mut self) -> Result<Value, String> {
@@ -385,12 +505,44 @@ impl Session {
         self.require_data(body, "/x/web-interface/index/top/rcmd")
     }
 
-    pub fn favorite_folders(&mut self, mid: i64) -> Result<Value, String> {
-        let body = self.get_json(
-            &format!("/x/v3/fav/folder/created/list-all?up_mid={mid}"),
-            REFERER,
-        )?;
+    pub fn favorite_folders(&mut self, mid: i64, rid: i64) -> Result<Value, String> {
+        let mut path = format!("/x/v3/fav/folder/created/list-all?up_mid={mid}");
+        if rid > 0 {
+            path.push_str(&format!("&type=2&rid={rid}"));
+        }
+        let body = self.get_json(&path, REFERER)?;
         self.require_data(body, "/x/v3/fav/folder/created/list-all")
+    }
+
+    pub fn favorite_folder_add(&mut self, title: &str) -> Result<Value, String> {
+        let csrf = self.csrf()?;
+        let form = [
+            ("title", title),
+            ("intro", "Melune"),
+            ("privacy", "1"),
+            ("csrf", csrf.as_str()),
+        ];
+        self.post_form("/x/v3/fav/folder/add", &form)
+    }
+
+    pub fn favorite_resource_deal(
+        &mut self,
+        rid: i64,
+        add_media_ids: &str,
+        del_media_ids: &str,
+    ) -> Result<Value, String> {
+        let csrf = self.csrf()?;
+        let rid_s = rid.to_string();
+        let form = [
+            ("rid", rid_s.as_str()),
+            ("type", "2"),
+            ("add_media_ids", add_media_ids),
+            ("del_media_ids", del_media_ids),
+            ("platform", "web"),
+            ("csrf", csrf.as_str()),
+            ("csrf_token", csrf.as_str()),
+        ];
+        self.post_form("/x/v3/fav/resource/deal", &form)
     }
 
     pub fn favorite_list(
@@ -408,6 +560,33 @@ impl Session {
         self.require_data(body, "/x/v3/fav/resource/list")
     }
 
+    pub fn user_card(&mut self, mid: i64) -> Result<Value, String> {
+        let body = self.get_json(
+            &format!("/x/web-interface/card?mid={mid}"),
+            "https://space.bilibili.com/",
+        )?;
+        self.require_data(body, "/x/web-interface/card")
+    }
+
+    pub fn space_archives(
+        &mut self,
+        mid: i64,
+        page: u32,
+        page_size: u32,
+    ) -> Result<Value, String> {
+        self.get_wbi(
+            "/x/space/wbi/arc/search",
+            &[
+                ("mid", mid.to_string()),
+                ("pn", page.max(1).to_string()),
+                ("ps", page_size.clamp(1, 50).to_string()),
+                ("tid", "0".into()),
+                ("keyword", "".into()),
+                ("order", "pubdate".into()),
+            ],
+            &format!("https://space.bilibili.com/{mid}"),
+        )
+    }
     pub fn history(&mut self, max: i64, view_at: i64, page_size: u32) -> Result<Value, String> {
         let body = self.get_json(
             &format!(
@@ -452,6 +631,36 @@ fn playurl_params(bvid: &str, cid: i64, avid: Option<i64>) -> Vec<(&'static str,
         params.push(("avid", avid.to_string()));
     }
     params
+}
+
+fn should_cache_url(url: &str) -> bool {
+    !url.contains("/x/web-interface/nav")
+        && !url.contains("passport.bilibili.com")
+        && !url.contains("playurl")
+        && !url.contains("qrcode")
+        && !url.contains("/x/v3/fav")
+}
+
+fn json_cache_key(url: &str) -> String {
+    let Some((base, query)) = url.split_once('?') else {
+        return url.to_string();
+    };
+    let kept = query
+        .split('&')
+        .filter(|part| !part.starts_with("wts=") && !part.starts_with("w_rid="))
+        .collect::<Vec<_>>();
+    if kept.is_empty() {
+        base.to_string()
+    } else {
+        format!("{base}?{}", kept.join("&"))
+    }
+}
+
+fn cookie_clears_login(value: &str) -> bool {
+    let trimmed = value.trim();
+    trimmed.is_empty()
+        || trimmed.eq_ignore_ascii_case("deleted")
+        || trimmed.eq_ignore_ascii_case("null")
 }
 
 fn load_cookies(path: &Path) -> HashMap<String, String> {
@@ -530,4 +739,31 @@ fn unix_days_to_ymd(z: i64) -> String {
     let m = if mp < 10 { mp + 3 } else { mp - 9 };
     let y = if m <= 2 { y + 1 } else { y };
     format!("{y:04}{m:02}{d:02}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{cookie_clears_login, json_cache_key};
+
+    #[test]
+    fn deleted_login_cookies_are_ignored() {
+        assert!(cookie_clears_login(""));
+        assert!(cookie_clears_login("deleted"));
+        assert!(cookie_clears_login("DELETED"));
+        assert!(!cookie_clears_login("abc%2C123"));
+    }
+
+    #[test]
+    fn cache_key_strips_wbi_signature() {
+        assert_eq!(
+            json_cache_key(
+                "https://api.bilibili.com/x/web-interface/wbi/search/type?keyword=a&wts=1&w_rid=abc"
+            ),
+            "https://api.bilibili.com/x/web-interface/wbi/search/type?keyword=a"
+        );
+        assert_eq!(
+            json_cache_key("/x/web-interface/ranking/v2?rid=1003"),
+            "/x/web-interface/ranking/v2?rid=1003"
+        );
+    }
 }

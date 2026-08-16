@@ -2,12 +2,16 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:melune/app.dart';
+import 'package:melune/bili/models.dart';
+import 'package:melune/navigation.dart';
+import 'package:melune/pages/discover_page.dart';
 import 'package:melune/pages/favorites_page.dart';
 import 'package:melune/pages/home_page.dart';
 import 'package:melune/pages/now_playing_page.dart';
 import 'package:melune/pages/search_page.dart';
 import 'package:melune/pages/settings_page.dart';
 import 'package:melune/player/playback_store.dart';
+import 'package:melune/settings/shortcuts.dart';
 import 'package:melune/theme/tokens.dart';
 import 'package:melune/widgets/browse_scope.dart';
 import 'package:melune/widgets/content_frame.dart';
@@ -34,12 +38,21 @@ class MeluneShell extends StatefulWidget {
 
 class _MeluneShellState extends State<MeluneShell> {
   int _index = 0;
+  var _searchOpen = false;
   var _searchQuery = '';
   final _searchController = TextEditingController();
+  final _searchNavKey = GlobalKey<ContentNavigatorState>();
   final _navKeys = List<GlobalKey<ContentNavigatorState>>.generate(
     4,
     (_) => GlobalKey<ContentNavigatorState>(),
   );
+  RootBrowseController? _browse;
+
+  @override
+  void initState() {
+    super.initState();
+    HardwareKeyboard.instance.addHandler(_onShortcut);
+  }
 
   bool get _interceptBack {
     if (kIsWeb) {
@@ -50,9 +63,45 @@ class _MeluneShellState extends State<MeluneShell> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _browse = RootBrowse.maybeOf(context);
+    _browse?.attach(_openArtistFromOverlay);
+  }
+
+  @override
   void dispose() {
+    HardwareKeyboard.instance.removeHandler(_onShortcut);
+    _browse?.attach(null);
     _searchController.dispose();
     super.dispose();
+  }
+
+  bool _onShortcut(KeyEvent event) {
+    final focus = FocusManager.instance.primaryFocus;
+    final ctx = focus?.context;
+    if (ctx != null &&
+        (ctx.widget is EditableText ||
+            ctx.findAncestorWidgetOfExactType<EditableText>() != null ||
+            ctx.findAncestorWidgetOfExactType<TextField>() != null)) {
+      return false;
+    }
+    if (!mounted) {
+      return false;
+    }
+    return MeluneShortcuts.handle(event, PlaybackScope.read(context));
+  }
+
+  void _openArtistFromOverlay(MeluneUpProfile profile) {
+    PlaybackScope.read(context).closeNowPlaying();
+    setState(() => _searchOpen = false);
+    final index = _visibleIndex(MediaQuery.sizeOf(context).width >= 720);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      _navKeys[index].currentState?.openArtist(profile);
+    });
   }
 
   Future<void> _onPop(bool didPop) async {
@@ -68,7 +117,17 @@ class _MeluneShellState extends State<MeluneShell> {
       player.closePlaylist();
       return;
     }
-    if (_navKeys[_index].currentState?.pop() == true) {
+    if (_searchOpen) {
+      if (_searchNavKey.currentState?.pop() == true) {
+        return;
+      }
+      setState(() => _searchOpen = false);
+      return;
+    }
+    if (_navKeys[_visibleIndex(MediaQuery.sizeOf(context).width >= 720)]
+            .currentState
+            ?.pop() ==
+        true) {
       return;
     }
     await _moveToBackground();
@@ -80,7 +139,9 @@ class _MeluneShellState extends State<MeluneShell> {
     }
     if (defaultTargetPlatform == TargetPlatform.android) {
       try {
-        await const MethodChannel('dev.melune.app').invokeMethod<void>('moveToBackground');
+        await const MethodChannel(
+          'dev.melune.app',
+        ).invokeMethod<void>('moveToBackground');
       } catch (_) {}
       return;
     }
@@ -90,33 +151,72 @@ class _MeluneShellState extends State<MeluneShell> {
     final query = value.trim();
     setState(() {
       _searchQuery = query;
-      _index = 1;
+      _searchOpen = true;
     });
+  }
+
+  void _openLibraryAlbum(MeluneAlbum album) {
+    final next =
+        (_index == kMeluneFavoritesIndex || _index == kMeluneSettingsIndex)
+        ? 0
+        : _index;
+    setState(() {
+      _index = next;
+      _searchOpen = false;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _navKeys[next].currentState?.openAlbum(album);
+    });
+  }
+
+  void _selectTab(int index) {
+    setState(() {
+      _index = index;
+      _searchOpen = false;
+    });
+  }
+
+  int _visibleIndex(bool wide) {
+    if (wide && _index == kMeluneFavoritesIndex) {
+      return 0;
+    }
+    return _index;
   }
 
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
     final wide = MediaQuery.sizeOf(context).width >= 720;
+    final tabIndex = _visibleIndex(wide);
     final pages = [
       ContentNavigator(
         key: _navKeys[0],
         child: HomePage(appName: widget.appName),
       ),
-      ContentNavigator(
-        key: _navKeys[1],
-        child: SearchPage(query: _searchQuery),
-      ),
+      ContentNavigator(key: _navKeys[1], child: const DiscoverPage()),
       ContentNavigator(
         key: _navKeys[2],
-        child: const FavoritesPage(),
+        child: wide ? const SizedBox.shrink() : const FavoritesPage(),
       ),
       ContentNavigator(
         key: _navKeys[3],
-        child: SettingsPage(appName: widget.appName, greet: widget.greet),
+        child: SettingsPage(
+          appName: widget.appName,
+          greet: widget.greet,
+          window: widget.window,
+        ),
       ),
     ];
-    final body = IndexedStack(index: _index, children: pages);
+    final tabs = IndexedStack(index: tabIndex, children: pages);
+    final search = ContentNavigator(
+      key: _searchNavKey,
+      child: SearchPage(
+        query: _searchQuery,
+        onClose: () => setState(() => _searchOpen = false),
+      ),
+    );
+    final body = _searchOpen ? search : tabs;
+    final showSidebar = wide && !_searchOpen;
 
     return PopScope(
       canPop: !_interceptBack,
@@ -141,11 +241,13 @@ class _MeluneShellState extends State<MeluneShell> {
                   child: wide
                       ? Row(
                           children: [
-                            MeluneSideNav(
-                              index: _index,
-                              onSelect: (index) => setState(() => _index = index),
-                            ),
-                            ContentFrame(wide: true, child: body),
+                            if (showSidebar)
+                              MeluneSideNav(
+                                index: tabIndex,
+                                onSelect: _selectTab,
+                                onOpenAlbum: _openLibraryAlbum,
+                              ),
+                            ContentFrame(wide: showSidebar, child: body),
                           ],
                         )
                       : Column(
@@ -153,7 +255,7 @@ class _MeluneShellState extends State<MeluneShell> {
                             ContentFrame(wide: false, child: body),
                             MeluneMobileNav(
                               index: _index,
-                              onSelect: (index) => setState(() => _index = index),
+                              onSelect: _selectTab,
                             ),
                           ],
                         ),

@@ -1,12 +1,15 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:melune/bili/models.dart';
 import 'package:melune/player/format_time.dart';
 import 'package:melune/player/playback_select.dart';
 import 'package:melune/player/playback_store.dart';
 import 'package:melune/theme/tokens.dart';
 import 'package:melune/widgets/audio_quality.dart';
+import 'package:melune/widgets/browse_scope.dart';
 import 'package:melune/widgets/karaoke_lyrics.dart';
 import 'package:melune/widgets/track_cover.dart';
+import 'package:melune/widgets/track_like_button.dart';
 import 'package:melune/widgets/volume_button.dart';
 
 class NowPlayingGate extends StatefulWidget {
@@ -201,10 +204,7 @@ class _NowPlayingPageState extends State<NowPlayingPage> {
           _TransportRow(player: player),
           if (player.error != null) ...[
             const SizedBox(height: 12),
-            Text(
-              player.error!,
-              style: TextStyle(color: tokens.colorSecondary),
-            ),
+            Text(player.error!, style: TextStyle(color: tokens.colorSecondary)),
           ],
         ],
       ),
@@ -217,49 +217,46 @@ class _NowPlayingPageState extends State<NowPlayingPage> {
         child: Column(
           children: [
             _NowPlayingChrome(player: player),
-          Expanded(
-            child: wide
-                ? Row(
-                    children: [
-                      Expanded(
-                        flex: 5,
-                        child: Column(
-                          children: [
-                            Expanded(child: _CoverAndTitle(player: player)),
-                            controls,
-                          ],
-                        ),
-                      ),
-                      Expanded(
-                        flex: 6,
-                        child: _LyricsPane(player: player),
-                      ),
-                    ],
-                  )
-                : Column(
-                    children: [
-                      Expanded(
-                        child: PageView(
-                          controller: _pager,
-                          physics: const BouncingScrollPhysics(
-                            parent: PageScrollPhysics(),
+            Expanded(
+              child: wide
+                  ? Row(
+                      children: [
+                        Expanded(
+                          flex: 5,
+                          child: Column(
+                            children: [
+                              Expanded(child: _CoverAndTitle(player: player)),
+                              controls,
+                            ],
                           ),
-                          onPageChanged: (index) {
-                            player.setLyricsExpanded(index == 1);
-                          },
-                          children: [
-                            _CoverAndTitle(player: player),
-                            _LyricsPane(player: player),
-                          ],
                         ),
-                      ),
-                      _PageDots(index: _expanded ? 1 : 0),
-                      controls,
-                    ],
-                  ),
-          ),
-        ],
-      ),
+                        Expanded(flex: 6, child: _LyricsPane(player: player)),
+                      ],
+                    )
+                  : Column(
+                      children: [
+                        Expanded(
+                          child: PageView(
+                            controller: _pager,
+                            physics: const BouncingScrollPhysics(
+                              parent: PageScrollPhysics(),
+                            ),
+                            onPageChanged: (index) {
+                              player.setLyricsExpanded(index == 1);
+                            },
+                            children: [
+                              _CoverAndTitle(player: player),
+                              _LyricsPane(player: player),
+                            ],
+                          ),
+                        ),
+                        _PageDots(index: _expanded ? 1 : 0),
+                        controls,
+                      ],
+                    ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -281,7 +278,10 @@ class _NowPlayingChrome extends StatelessWidget {
             key: const Key('now-playing-back'),
             tooltip: '返回',
             onPressed: player.closeNowPlaying,
-            icon: Icon(Icons.keyboard_arrow_down_rounded, color: tokens.colorContrast),
+            icon: Icon(
+              Icons.keyboard_arrow_down_rounded,
+              color: tokens.colorContrast,
+            ),
           ),
           Expanded(
             child: Text(
@@ -313,69 +313,98 @@ class _CoverAndTitle extends StatelessWidget {
       builder: (context, constraints) {
         final coverSize = (constraints.maxHeight * 0.58).clamp(120.0, 280.0);
         return Padding(
-            padding: const EdgeInsets.fromLTRB(28, 8, 28, 12),
-            child: Column(
-              children: [
-                Align(
-                  alignment: Alignment.topCenter,
-                  child: AnimatedScale(
-                    scale: player.playing ? 1 : 0.94,
+          padding: const EdgeInsets.fromLTRB(28, 8, 28, 12),
+          child: Column(
+            children: [
+              Align(
+                alignment: Alignment.topCenter,
+                child: AnimatedScale(
+                  scale: player.playing ? 1 : 0.94,
+                  duration: const Duration(milliseconds: 480),
+                  curve: Curves.easeOutCubic,
+                  child: AnimatedContainer(
                     duration: const Duration(milliseconds: 480),
                     curve: Curves.easeOutCubic,
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 480),
-                      curve: Curves.easeOutCubic,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(22),
-                        boxShadow: player.playing
-                            ? [
-                                BoxShadow(
-                                  color: tokens.colorBrand.withValues(alpha: 0.28),
-                                  blurRadius: 28,
-                                  offset: const Offset(0, 12),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(22),
+                      boxShadow: player.playing
+                          ? [
+                              BoxShadow(
+                                color: tokens.colorBrand.withValues(
+                                  alpha: 0.28,
                                 ),
-                              ]
-                            : const [],
-                      ),
-                      child: TrackCover(
-                        url: track?.coverUrl ?? '',
-                        size: coverSize,
-                        radius: 22,
-                      ),
+                                blurRadius: 28,
+                                offset: const Offset(0, 12),
+                              ),
+                            ]
+                          : const [],
+                    ),
+                    child: TrackCover(
+                      url: track?.coverUrl ?? '',
+                      size: coverSize,
+                      radius: 22,
                     ),
                   ),
                 ),
-                const SizedBox(height: 16),
-                Text(
-                  player.displayTitle,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 26,
-                    fontWeight: FontWeight.w800,
-                    color: tokens.colorContrast,
-                  ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                player.displayTitle,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 26,
+                  fontWeight: FontWeight.w800,
+                  color: tokens.colorContrast,
                 ),
-                const SizedBox(height: 6),
-                Text(
-                  track?.artist.isNotEmpty == true ? track!.artist : 'Bilibili 音乐',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: tokens.colorBrand,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                const _Tag(label: '音乐'),
-                const Spacer(),
-              ],
-            ),
-          );
+              ),
+              const SizedBox(height: 6),
+              _NowPlayingArtist(track: track),
+              const SizedBox(height: 10),
+              const _Tag(label: '音乐'),
+              const Spacer(),
+            ],
+          ),
+        );
       },
+    );
+  }
+}
+
+class _NowPlayingArtist extends StatelessWidget {
+  const _NowPlayingArtist({required this.track});
+
+  final MeluneTrack? track;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+    final artist = track?.artist ?? '';
+    final canOpen = track != null && track!.upMid > 0 && artist.isNotEmpty;
+    final label = artist.isNotEmpty ? artist : 'Bilibili 音乐';
+    final text = Text(
+      label,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      textAlign: TextAlign.center,
+      style: TextStyle(
+        fontSize: 15,
+        fontWeight: FontWeight.w600,
+        color: tokens.colorBrand,
+      ),
+    );
+    if (!canOpen) {
+      return text;
+    }
+    return InkWell(
+      key: Key('now-playing-artist-${track!.upMid}'),
+      onTap: () => openArtistFromTrack(context, track!),
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        child: text,
+      ),
     );
   }
 }
@@ -481,8 +510,12 @@ class _SeekRow extends StatelessWidget {
               SliderTheme(
                 data: SliderTheme.of(context).copyWith(
                   trackHeight: 4,
-                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-                  overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+                  thumbShape: const RoundSliderThumbShape(
+                    enabledThumbRadius: 6,
+                  ),
+                  overlayShape: const RoundSliderOverlayShape(
+                    overlayRadius: 12,
+                  ),
                   activeTrackColor: tokens.colorBrand,
                   inactiveTrackColor: tokens.colorDivider,
                   thumbColor: tokens.colorBrand,
@@ -492,7 +525,8 @@ class _SeekRow extends StatelessWidget {
                   onChanged: (value) {
                     player.seek(
                       Duration(
-                        milliseconds: (value * player.duration.inMilliseconds).round(),
+                        milliseconds: (value * player.duration.inMilliseconds)
+                            .round(),
                       ),
                     );
                   },
@@ -547,14 +581,7 @@ class _TransportRow extends StatelessWidget {
       builder: (context, store) {
         final mode = store.playbackMode;
         final left = [
-          IconButton(
-            tooltip: store.liked ? '取消收藏' : '收藏',
-            onPressed: store.toggleLike,
-            icon: Icon(
-              store.liked ? Icons.favorite : Icons.favorite_border,
-              color: store.liked ? tokens.colorBrand : tokens.colorBase,
-            ),
-          ),
+          TrackLikeButton(player: store),
           IconButton(
             tooltip: mode.label,
             onPressed: store.cyclePlaybackMode,
@@ -566,7 +593,10 @@ class _TransportRow extends StatelessWidget {
           IconButton(
             tooltip: '上一首',
             onPressed: store.previous,
-            icon: Icon(Icons.skip_previous_rounded, color: tokens.colorContrast),
+            icon: Icon(
+              Icons.skip_previous_rounded,
+              color: tokens.colorContrast,
+            ),
           ),
         ];
         final right = [
@@ -656,7 +686,10 @@ Future<void> _showQueue(BuildContext context, PlaybackStore player) {
             return SizedBox(
               height: 180,
               child: Center(
-                child: Text('播放队列是空的', style: TextStyle(color: tokens.colorBase)),
+                child: Text(
+                  '播放队列是空的',
+                  style: TextStyle(color: tokens.colorBase),
+                ),
               ),
             );
           }
@@ -674,7 +707,10 @@ Future<void> _showQueue(BuildContext context, PlaybackStore player) {
                     Navigator.pop(context);
                   },
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 18,
+                      vertical: 10,
+                    ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -683,14 +719,21 @@ Future<void> _showQueue(BuildContext context, PlaybackStore player) {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            fontWeight: current ? FontWeight.w700 : FontWeight.w500,
-                            color: current ? tokens.colorBrand : tokens.colorContrast,
+                            fontWeight: current
+                                ? FontWeight.w700
+                                : FontWeight.w500,
+                            color: current
+                                ? tokens.colorBrand
+                                : tokens.colorContrast,
                           ),
                         ),
                         Text(
                           item.artist,
                           maxLines: 1,
-                          style: TextStyle(fontSize: 12, color: tokens.colorBase),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: tokens.colorBase,
+                          ),
                         ),
                       ],
                     ),

@@ -11,8 +11,11 @@ import 'package:melune/player/media_handler.dart';
 import 'package:melune/player/playback_store.dart';
 import 'package:melune/player/windows_taskbar_media.dart'
     if (dart.library.html) 'package:melune/player/windows_taskbar_media_stub.dart';
+import 'package:melune/player/equalizer.dart';
+import 'package:melune/settings/app_settings.dart';
 import 'package:melune/src/rust/api/simple.dart';
 import 'package:melune/src/rust/frb_generated.dart';
+import 'package:melune/window/app_tray.dart';
 import 'package:melune/window/desktop_lyric.dart';
 import 'package:melune/window/desktop_lyric_app.dart';
 import 'package:melune/window/desktop_window.dart';
@@ -36,6 +39,7 @@ Future<void> main() async {
 
   NowPlayingBridge? media;
   try {
+    JustAudioMediaKit.title = 'Melune';
     JustAudioMediaKit.ensureInitialized();
   } catch (_) {
     // 测试或缺少 native 库时仍启动界面。
@@ -49,15 +53,23 @@ Future<void> main() async {
   try {
     final window = await bootstrapWindow();
     await RustLib.init();
+    final cookieDir = await resolveBiliCookieDir();
+    await AppSettings.instance.restore(cookieDir);
     final bili = RustBiliClient();
-    await bili.init(await resolveBiliCookieDir());
-    final accounts = AccountStore(bili: bili);
-    await accounts.refresh();
+    final user = await bili.init(cookieDir);
+    final accounts = AccountStore(bili: bili, initial: user);
     final playback = PlaybackStore(
       bili: bili,
       media: media,
       windows: bootstrapWindowsTaskbar(),
+      persistDir: cookieDir,
     );
+    await playback.restore();
+    await MeluneEqualizer.applyFromSettings();
+    await MeluneTray.instance.start(window: window, playback: playback);
+    if (AppSettings.instance.startMinimized && window.enabled) {
+      await window.hideToTray();
+    }
 
     runApp(
       MeluneApp(

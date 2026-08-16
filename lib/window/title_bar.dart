@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:melune/accounts/account_avatar.dart';
 import 'package:melune/accounts/account_store.dart';
 import 'package:melune/accounts/accounts_popup.dart';
+import 'package:melune/settings/app_settings.dart';
 import 'package:melune/theme/tokens.dart';
 import 'package:melune/widgets/chrome_button.dart';
+import 'package:melune/widgets/melune_mark.dart';
 import 'package:melune/widgets/nav_button.dart';
 import 'package:melune/window/window_controller.dart';
 
@@ -33,7 +35,7 @@ class MeluneTitleBar extends StatelessWidget implements PreferredSizeWidget {
     final tokens = context.tokens;
 
     return ListenableBuilder(
-      listenable: window,
+      listenable: Listenable.merge([window, AppSettings.instance]),
       builder: (context, _) {
         return Material(
           color: Colors.transparent,
@@ -44,19 +46,17 @@ class MeluneTitleBar extends StatelessWidget implements PreferredSizeWidget {
                 GestureDetector(
                   key: const Key('window-drag-area'),
                   behavior: HitTestBehavior.opaque,
-                  onPanStart:
-                      window.enabled ? (_) => window.startDragging() : null,
-                  onDoubleTap:
-                      window.enabled ? () => window.toggleMaximize() : null,
+                  onPanStart: window.enabled
+                      ? (_) => window.startDragging()
+                      : null,
+                  onDoubleTap: window.enabled
+                      ? () => window.toggleMaximize()
+                      : null,
                   child: Padding(
                     padding: const EdgeInsets.only(left: 14, right: 10),
                     child: Row(
                       children: [
-                        Icon(
-                          Icons.graphic_eq,
-                          size: 22,
-                          color: tokens.colorBrand,
-                        ),
+                        const MeluneMark(size: 22),
                         const SizedBox(width: 8),
                         Text(
                           appName,
@@ -72,10 +72,12 @@ class MeluneTitleBar extends StatelessWidget implements PreferredSizeWidget {
                 Expanded(
                   child: GestureDetector(
                     behavior: HitTestBehavior.translucent,
-                    onPanStart:
-                        window.enabled ? (_) => window.startDragging() : null,
-                    onDoubleTap:
-                        window.enabled ? () => window.toggleMaximize() : null,
+                    onPanStart: window.enabled
+                        ? (_) => window.startDragging()
+                        : null,
+                    onDoubleTap: window.enabled
+                        ? () => window.toggleMaximize()
+                        : null,
                     child: Center(
                       child: Padding(
                         padding: const EdgeInsets.symmetric(
@@ -142,7 +144,7 @@ class MeluneTitleBar extends StatelessWidget implements PreferredSizeWidget {
                   ChromeButton(
                     key: const Key('window-close'),
                     icon: Icons.close,
-                    tooltip: '关闭',
+                    tooltip: AppSettings.instance.closeToTray ? '隐藏到托盘' : '退出',
                     danger: true,
                     onTap: () => window.close(),
                   ),

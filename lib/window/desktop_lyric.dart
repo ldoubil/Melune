@@ -9,6 +9,37 @@ const kDesktopLyricArguments = '{"businessId":"$kDesktopLyricBusinessId"}';
 const kDesktopLyricDownChannel = 'melune/lyric/down';
 const kDesktopLyricUpChannel = 'melune/lyric/up';
 
+enum DesktopLyricEffect {
+  reel,
+  karaoke,
+  glow,
+  dual;
+
+  String get label => switch (this) {
+    DesktopLyricEffect.reel => '卷轴滚动',
+    DesktopLyricEffect.karaoke => '卡拉OK',
+    DesktopLyricEffect.glow => '霓虹呼吸',
+    DesktopLyricEffect.dual => '双行渐显',
+  };
+
+  static DesktopLyricEffect parse(Object? raw) {
+    if (raw is String) {
+      for (final value in values) {
+        if (value.name == raw) {
+          return value;
+        }
+      }
+    }
+    if (raw is num) {
+      final index = raw.toInt();
+      if (index >= 0 && index < values.length) {
+        return values[index];
+      }
+    }
+    return DesktopLyricEffect.reel;
+  }
+}
+
 class DesktopLyricSnapshot {
   const DesktopLyricSnapshot({
     this.visible = false,
@@ -19,6 +50,9 @@ class DesktopLyricSnapshot {
     this.current = '',
     this.next = '',
     this.title = '',
+    this.effect = DesktopLyricEffect.reel,
+    this.progress = 0,
+    this.opacity = 1,
   });
 
   final bool visible;
@@ -29,6 +63,9 @@ class DesktopLyricSnapshot {
   final String current;
   final String next;
   final String title;
+  final DesktopLyricEffect effect;
+  final double progress;
+  final double opacity;
 
   factory DesktopLyricSnapshot.fromMap(Map<String, dynamic> map) {
     return DesktopLyricSnapshot(
@@ -40,6 +77,9 @@ class DesktopLyricSnapshot {
       current: map['current'] as String? ?? '',
       next: map['next'] as String? ?? '',
       title: map['title'] as String? ?? '',
+      effect: DesktopLyricEffect.parse(map['effect']),
+      progress: (map['progress'] as num?)?.toDouble() ?? 0,
+      opacity: ((map['opacity'] as num?)?.toDouble() ?? 1).clamp(0.2, 1.0),
     );
   }
 
@@ -53,6 +93,9 @@ class DesktopLyricSnapshot {
       'current': current,
       'next': next,
       'title': title,
+      'effect': effect.name,
+      'progress': progress,
+      'opacity': opacity,
     };
   }
 }
@@ -79,6 +122,7 @@ final class DesktopLyricHost {
     required VoidCallback onClosed,
     required VoidCallback onToggleLike,
     required VoidCallback onToggleLock,
+    required VoidCallback onCycleEffect,
   }) {
     if (!isDesktopWindow || _attached) {
       return;
@@ -96,6 +140,9 @@ final class DesktopLyricHost {
               return null;
             case 'toggleLock':
               onToggleLock();
+              return null;
+            case 'cycleEffect':
+              onCycleEffect();
               return null;
             default:
               throw MissingPluginException(call.method);
@@ -190,11 +237,13 @@ void attachDesktopLyricHost({
   required VoidCallback onClosed,
   required VoidCallback onToggleLike,
   required VoidCallback onToggleLock,
+  required VoidCallback onCycleEffect,
 }) {
   DesktopLyricHost.instance.attach(
     onClosed: onClosed,
     onToggleLike: onToggleLike,
     onToggleLock: onToggleLock,
+    onCycleEffect: onCycleEffect,
   );
 }
 
@@ -207,6 +256,9 @@ void syncDesktopLyric({
   required String current,
   required String next,
   String title = '',
+  DesktopLyricEffect effect = DesktopLyricEffect.reel,
+  double progress = 0,
+  double opacity = 1,
 }) {
   unawaited(
     DesktopLyricHost.instance.push(
@@ -219,6 +271,9 @@ void syncDesktopLyric({
         current: current,
         next: next,
         title: title,
+        effect: effect,
+        progress: progress,
+        opacity: opacity,
       ),
     ),
   );

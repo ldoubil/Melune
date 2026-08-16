@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:melune/bili/models.dart';
 import 'package:melune/theme/tokens.dart';
 import 'package:melune/widgets/browse_scope.dart';
+import 'package:melune/widgets/skeleton.dart';
 import 'package:melune/widgets/track_cover.dart';
 
 class AlbumCard extends StatelessWidget {
@@ -69,11 +70,13 @@ class AlbumGrid extends StatelessWidget {
     required this.albums,
     this.padding,
     this.trailing,
+    this.skeletonCount = 0,
   });
 
   final List<MeluneAlbum> albums;
   final EdgeInsets? padding;
   final Widget? trailing;
+  final int skeletonCount;
 
   @override
   Widget build(BuildContext context) {
@@ -92,9 +95,11 @@ class AlbumGrid extends StatelessWidget {
             delegate: SliverChildBuilderDelegate(
               (context, index) => Align(
                 alignment: Alignment.topLeft,
-                child: AlbumCard(album: albums[index]),
+                child: index < albums.length
+                    ? AlbumCard(album: albums[index])
+                    : const AlbumCardSkeleton(),
               ),
-              childCount: albums.length,
+              childCount: albums.length + skeletonCount,
             ),
           ),
         ),
@@ -105,11 +110,7 @@ class AlbumGrid extends StatelessWidget {
 }
 
 class AlbumStrip extends StatelessWidget {
-  const AlbumStrip({
-    super.key,
-    required this.albums,
-    required this.empty,
-  });
+  const AlbumStrip({super.key, required this.albums, required this.empty});
 
   final List<MeluneAlbum> albums;
   final String empty;

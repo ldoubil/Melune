@@ -4,7 +4,11 @@ import 'package:melune/bili/bili_client.dart';
 import 'package:melune/bili/models.dart';
 
 class AccountStore extends ChangeNotifier {
-  AccountStore({required this.bili, MeluneUser? initial});
+  AccountStore({required this.bili, MeluneUser? initial}) {
+    if (initial != null) {
+      _applyUser(initial);
+    }
+  }
 
   final BiliClient bili;
   MeluneAccount? _active;

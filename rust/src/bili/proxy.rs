@@ -116,11 +116,14 @@ fn handle_client(mut stream: TcpStream, _addr: SocketAddr) -> Result<(), String>
         return write_status(&mut stream, 403, "Host not allowed");
     }
 
-    let agent = ureq::AgentBuilder::new()
-        .timeout_connect(Duration::from_secs(15))
-        .timeout_read(Duration::from_secs(300))
-        .user_agent(UA)
-        .build();
+    let agent = super::outbound::apply(
+        ureq::AgentBuilder::new()
+            .timeout_connect(Duration::from_secs(30))
+            .timeout_read(Duration::from_secs(300))
+            .user_agent(UA),
+        url.as_str(),
+    )
+    .build();
     let mut req = agent
         .get(url.as_str())
         .set("Referer", REFERER)

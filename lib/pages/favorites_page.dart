@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:melune/accounts/account_store.dart';
-import 'package:melune/bili/bili_scope.dart';
-import 'package:melune/bili/models.dart';
 import 'package:melune/player/playback_store.dart';
 import 'package:melune/theme/tokens.dart';
 import 'package:melune/widgets/album_card.dart';
+import 'package:melune/widgets/library_rail.dart';
+import 'package:melune/widgets/track_like_button.dart';
 
 class FavoritesPage extends StatefulWidget {
   const FavoritesPage({super.key});
@@ -15,9 +15,8 @@ class FavoritesPage extends StatefulWidget {
 
 class _FavoritesPageState extends State<FavoritesPage> {
   AccountStore? _accounts;
-  List<MeluneFavoriteFolder> _folders = [];
-  List<MeluneTrack> _history = [];
   var _loading = false;
+  var _loadGen = 0;
   String? _error;
 
   @override
@@ -25,69 +24,47 @@ class _FavoritesPageState extends State<FavoritesPage> {
     super.didChangeDependencies();
     final store = AccountScope.of(context);
     if (_accounts != store) {
-      _accounts?.removeListener(_load);
+      _accounts?.removeListener(_onAccount);
       _accounts = store;
-      _accounts!.addListener(_load);
+      _accounts!.addListener(_onAccount);
       _load();
     }
   }
 
   @override
   void dispose() {
-    _accounts?.removeListener(_load);
+    _accounts?.removeListener(_onAccount);
     super.dispose();
   }
 
-  Future<void> _load() async {
+  void _onAccount() {
+    _load();
+  }
+
+  Future<void> _load({bool force = false}) async {
     final accounts = AccountScope.of(context);
+    final favorites = PlaybackScope.read(context).favorites;
     if (!accounts.isLoggedIn) {
+      favorites.clear();
       setState(() {
-        _folders = [];
-        _history = [];
         _loading = false;
+        _error = null;
       });
       return;
     }
+    final gen = ++_loadGen;
     setState(() {
-      _loading = true;
+      _loading = favorites.folders.isEmpty;
       _error = null;
     });
     try {
-      final bili = BiliScope.of(context);
-      final folders = await bili.favoriteFolders();
-      final history = await bili.history();
-      final covers = await Future.wait(
-        folders.map((folder) async {
-          try {
-            final page = await bili.favoriteTracks(folder.id);
-            if (page.items.isEmpty) {
-              return folder.coverUrl;
-            }
-            final first = page.items.first.coverUrl;
-            return first.isNotEmpty ? first : folder.coverUrl;
-          } catch (_) {
-            return folder.coverUrl;
-          }
-        }),
-      );
-      if (!mounted) {
+      await favorites.ensure(force: force);
+      if (!mounted || gen != _loadGen) {
         return;
       }
-      setState(() {
-        _folders = [
-          for (var i = 0; i < folders.length; i++)
-            MeluneFavoriteFolder(
-              id: folders[i].id,
-              title: folders[i].title,
-              mediaCount: folders[i].mediaCount,
-              coverUrl: covers[i].isNotEmpty ? covers[i] : folders[i].coverUrl,
-            ),
-        ];
-        _history = history.tracks;
-        _loading = false;
-      });
+      setState(() => _loading = false);
     } catch (err) {
-      if (!mounted) {
+      if (!mounted || gen != _loadGen) {
         return;
       }
       setState(() {
@@ -97,78 +74,65 @@ class _FavoritesPageState extends State<FavoritesPage> {
     }
   }
 
-  List<MeluneAlbum> _albums(List<MeluneTrack> liked) {
-    return [
-      if (liked.isNotEmpty)
-        MeluneAlbum.fromTracks(
-          id: 'liked',
-          title: '我喜欢',
-          subtitle: '收藏',
-          tracks: liked,
-        ),
-      for (final folder in _folders) MeluneAlbum.fromFolder(folder),
-      if (_history.isNotEmpty)
-        MeluneAlbum.fromTracks(
-          id: 'history',
-          title: '最近播放',
-          subtitle: '历史',
-          tracks: _history,
-        ),
-    ];
+  Future<void> _createFolder() async {
+    final player = PlaybackScope.read(context);
+    final created = await promptCreateMeluneFolder(
+      context: context,
+      player: player,
+    );
+    if (created == null || !mounted) {
+      return;
+    }
+    setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
     final loggedIn = AccountScope.of(context).isLoggedIn;
-    final player = PlaybackScope.of(context);
 
     return ListenableBuilder(
-      listenable: player,
+      listenable: Listenable.merge([
+        PlaybackScope.of(context),
+        PlaybackScope.read(context).offline,
+        PlaybackScope.read(context).favorites,
+      ]),
       builder: (context, _) {
-        final albums = _albums(player.likedTracks);
-
-        if (_loading) {
-          return const Center(child: CircularProgressIndicator());
-        }
-
-        if (albums.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.queue_music_rounded, size: 48, color: tokens.colorBase),
-                const SizedBox(height: 12),
-                Text(
-                  '还没有收藏',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: tokens.colorContrast,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  loggedIn ? '喜欢的歌单会出现在这里' : '登录后会从 B 站同步收藏夹',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: tokens.colorBase,
-                  ),
-                ),
-              ],
-            ),
-          );
-        }
+        final player = PlaybackScope.read(context);
+        final albums = libraryAlbums(
+          folders: player.favorites.folders,
+          recent: player.recentTracks,
+          offlineCount: player.offline.cachedCount,
+        );
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-              child: Text(
-                '歌单',
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w800,
-                  color: tokens.colorContrast,
-                ),
+              padding: const EdgeInsets.fromLTRB(16, 12, 8, 0),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '歌单',
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                        color: tokens.colorContrast,
+                      ),
+                    ),
+                  ),
+                  if (loggedIn)
+                    IconButton(
+                      key: const Key('favorites-create'),
+                      tooltip: '新建收藏夹',
+                      onPressed: _createFolder,
+                      icon: Icon(
+                        Icons.create_new_folder_outlined,
+                        color: tokens.colorBase,
+                      ),
+                    ),
+                ],
               ),
             ),
             if (_error != null)
@@ -179,15 +143,57 @@ class _FavoritesPageState extends State<FavoritesPage> {
                   style: TextStyle(color: tokens.colorSecondary),
                 ),
               ),
-            Expanded(
-              child: RefreshIndicator(
-                onRefresh: _load,
-                child: AlbumGrid(
-                  albums: albums,
-                  padding: context.listPadding(16, 12, 16, 24),
+            if (_loading && loggedIn)
+              Expanded(
+                child: RefreshIndicator(
+                  onRefresh: () => _load(force: true),
+                  child: AlbumGrid(
+                    albums: albums,
+                    padding: context.listPadding(16, 12, 16, 24),
+                    skeletonCount: 6,
+                  ),
+                ),
+              )
+            else if (albums.isEmpty)
+              Expanded(
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.queue_music_rounded,
+                        size: 48,
+                        color: tokens.colorBase,
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        '还没有收藏',
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(color: tokens.colorContrast),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        loggedIn
+                            ? '点心会收到 Melune_默认收藏，长按心可选其它夹子'
+                            : '登录后会自动创建 Melune 收藏夹',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: tokens.colorBase,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            else
+              Expanded(
+                child: RefreshIndicator(
+                  onRefresh: () => _load(force: true),
+                  child: AlbumGrid(
+                    albums: albums,
+                    padding: context.listPadding(16, 12, 16, 24),
+                  ),
                 ),
               ),
-            ),
           ],
         );
       },

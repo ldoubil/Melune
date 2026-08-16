@@ -68,7 +68,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.12.0';
 
   @override
-  int get rustContentHash => 225858282;
+  int get rustContentHash => -716609069;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -84,6 +84,17 @@ abstract class RustLibApi extends BaseApi {
 
   String crateApiBiliBiliCleanTitle({required String title});
 
+  Future<BiliFavoriteFolder> crateApiBiliBiliCreateFavoriteFolder({
+    required String title,
+  });
+
+  Future<void> crateApiBiliBiliDealFavorite({
+    required PlatformInt64 rid,
+    required String bvid,
+    required String addMediaIds,
+    required String delMediaIds,
+  });
+
   Future<BiliExtractedAudio> crateApiBiliBiliExtractAudio({
     required String bvid,
     required PlatformInt64 aid,
@@ -91,7 +102,9 @@ abstract class RustLibApi extends BaseApi {
     required int qualityId,
   });
 
-  Future<List<BiliFavoriteFolder>> crateApiBiliBiliFavoriteFolders();
+  Future<List<BiliFavoriteFolder>> crateApiBiliBiliFavoriteFolders({
+    required PlatformInt64 rid,
+  });
 
   Future<BiliSearchPage> crateApiBiliBiliFavoriteTracks({
     required PlatformInt64 mediaId,
@@ -112,6 +125,11 @@ abstract class RustLibApi extends BaseApi {
   Future<List<BiliTrack>> crateApiBiliBiliMusicRecommend();
 
   Future<List<BiliTrack>> crateApiBiliBiliMusicRegion({required int page});
+
+  Future<List<BiliTrack>> crateApiBiliBiliMusicZone({
+    required PlatformInt64 cateId,
+    required int page,
+  });
 
   Future<BiliUser> crateApiBiliBiliNav();
 
@@ -137,6 +155,13 @@ abstract class RustLibApi extends BaseApi {
     required PlatformInt64 mid,
     required PlatformInt64 seasonId,
   });
+
+  Future<BiliSearchPage> crateApiBiliBiliUserArchives({
+    required PlatformInt64 mid,
+    required int page,
+  });
+
+  Future<BiliUpProfile> crateApiBiliBiliUserCard({required PlatformInt64 mid});
 
   Future<List<BiliTrack>> crateApiBiliBiliVideoPages({required String bvid});
 
@@ -209,6 +234,78 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "bili_clean_title", argNames: ["title"]);
 
   @override
+  Future<BiliFavoriteFolder> crateApiBiliBiliCreateFavoriteFolder({
+    required String title,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(title, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 3,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_bili_favorite_folder,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiBiliBiliCreateFavoriteFolderConstMeta,
+        argValues: [title],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiBiliBiliCreateFavoriteFolderConstMeta =>
+      const TaskConstMeta(
+        debugName: "bili_create_favorite_folder",
+        argNames: ["title"],
+      );
+
+  @override
+  Future<void> crateApiBiliBiliDealFavorite({
+    required PlatformInt64 rid,
+    required String bvid,
+    required String addMediaIds,
+    required String delMediaIds,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_i_64(rid, serializer);
+          sse_encode_String(bvid, serializer);
+          sse_encode_String(addMediaIds, serializer);
+          sse_encode_String(delMediaIds, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 4,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiBiliBiliDealFavoriteConstMeta,
+        argValues: [rid, bvid, addMediaIds, delMediaIds],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiBiliBiliDealFavoriteConstMeta =>
+      const TaskConstMeta(
+        debugName: "bili_deal_favorite",
+        argNames: ["rid", "bvid", "addMediaIds", "delMediaIds"],
+      );
+
+  @override
   Future<BiliExtractedAudio> crateApiBiliBiliExtractAudio({
     required String bvid,
     required PlatformInt64 aid,
@@ -226,7 +323,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 3,
+            funcId: 5,
             port: port_,
           );
         },
@@ -248,15 +345,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  Future<List<BiliFavoriteFolder>> crateApiBiliBiliFavoriteFolders() {
+  Future<List<BiliFavoriteFolder>> crateApiBiliBiliFavoriteFolders({
+    required PlatformInt64 rid,
+  }) {
     return handler.executeNormal(
       NormalTask(
         callFfi: (port_) {
           final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_i_64(rid, serializer);
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 4,
+            funcId: 6,
             port: port_,
           );
         },
@@ -265,14 +365,17 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           decodeErrorData: sse_decode_String,
         ),
         constMeta: kCrateApiBiliBiliFavoriteFoldersConstMeta,
-        argValues: [],
+        argValues: [rid],
         apiImpl: this,
       ),
     );
   }
 
   TaskConstMeta get kCrateApiBiliBiliFavoriteFoldersConstMeta =>
-      const TaskConstMeta(debugName: "bili_favorite_folders", argNames: []);
+      const TaskConstMeta(
+        debugName: "bili_favorite_folders",
+        argNames: ["rid"],
+      );
 
   @override
   Future<BiliSearchPage> crateApiBiliBiliFavoriteTracks({
@@ -288,7 +391,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 5,
+            funcId: 7,
             port: port_,
           );
         },
@@ -323,7 +426,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 6,
+            funcId: 8,
             port: port_,
           );
         },
@@ -353,7 +456,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 7,
+            funcId: 9,
             port: port_,
           );
         },
@@ -380,7 +483,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 8,
+            funcId: 10,
             port: port_,
           );
         },
@@ -407,7 +510,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 9,
+            funcId: 11,
             port: port_,
           );
         },
@@ -434,7 +537,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 10,
+            funcId: 12,
             port: port_,
           );
         },
@@ -462,7 +565,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 11,
+            funcId: 13,
             port: port_,
           );
         },
@@ -481,6 +584,40 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "bili_music_region", argNames: ["page"]);
 
   @override
+  Future<List<BiliTrack>> crateApiBiliBiliMusicZone({
+    required PlatformInt64 cateId,
+    required int page,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_i_64(cateId, serializer);
+          sse_encode_u_32(page, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 14,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_bili_track,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiBiliBiliMusicZoneConstMeta,
+        argValues: [cateId, page],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiBiliBiliMusicZoneConstMeta => const TaskConstMeta(
+    debugName: "bili_music_zone",
+    argNames: ["cateId", "page"],
+  );
+
+  @override
   Future<BiliUser> crateApiBiliBiliNav() {
     return handler.executeNormal(
       NormalTask(
@@ -489,7 +626,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 12,
+            funcId: 15,
             port: port_,
           );
         },
@@ -516,7 +653,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 13,
+            funcId: 16,
             port: port_,
           );
         },
@@ -548,7 +685,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 14,
+            funcId: 17,
             port: port_,
           );
         },
@@ -579,7 +716,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 15,
+            funcId: 18,
             port: port_,
           );
         },
@@ -606,7 +743,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 16,
+            funcId: 19,
             port: port_,
           );
         },
@@ -634,7 +771,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 17,
+            funcId: 20,
             port: port_,
           );
         },
@@ -666,7 +803,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 18,
+            funcId: 21,
             port: port_,
           );
         },
@@ -700,7 +837,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 19,
+            funcId: 22,
             port: port_,
           );
         },
@@ -722,6 +859,69 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<BiliSearchPage> crateApiBiliBiliUserArchives({
+    required PlatformInt64 mid,
+    required int page,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_i_64(mid, serializer);
+          sse_encode_u_32(page, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 23,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_bili_search_page,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiBiliBiliUserArchivesConstMeta,
+        argValues: [mid, page],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiBiliBiliUserArchivesConstMeta =>
+      const TaskConstMeta(
+        debugName: "bili_user_archives",
+        argNames: ["mid", "page"],
+      );
+
+  @override
+  Future<BiliUpProfile> crateApiBiliBiliUserCard({required PlatformInt64 mid}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_i_64(mid, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 24,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_bili_up_profile,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiBiliBiliUserCardConstMeta,
+        argValues: [mid],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiBiliBiliUserCardConstMeta =>
+      const TaskConstMeta(debugName: "bili_user_card", argNames: ["mid"]);
+
+  @override
   Future<List<BiliTrack>> crateApiBiliBiliVideoPages({required String bvid}) {
     return handler.executeNormal(
       NormalTask(
@@ -731,7 +931,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 20,
+            funcId: 25,
             port: port_,
           );
         },
@@ -770,22 +970,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           sse_encode_String(previous, serializer);
           sse_encode_String(current, serializer);
           sse_encode_String(next, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 21)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 26)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
           decodeErrorData: sse_decode_String,
         ),
         constMeta: kCrateApiDesktopLyricDesktopLyricSetConstMeta,
-        argValues: [
-          visible,
-          locked,
-          liked,
-          coverUrl,
-          previous,
-          current,
-          next,
-        ],
+        argValues: [visible, locked, liked, coverUrl, previous, current, next],
         apiImpl: this,
       ),
     );
@@ -812,7 +1004,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_String(name, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 22)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 27)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_String,
@@ -837,7 +1029,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 23,
+            funcId: 28,
             port: port_,
           );
         },
@@ -894,13 +1086,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   BiliFavoriteFolder dco_decode_bili_favorite_folder(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 4)
-      throw Exception('unexpected arr length: expect 4 but see ${arr.length}');
+    if (arr.length != 5)
+      throw Exception('unexpected arr length: expect 5 but see ${arr.length}');
     return BiliFavoriteFolder(
       id: dco_decode_i_64(arr[0]),
       title: dco_decode_String(arr[1]),
       mediaCount: dco_decode_i_32(arr[2]),
       coverUrl: dco_decode_String(arr[3]),
+      favState: dco_decode_bool(arr[4]),
     );
   }
 
@@ -1007,6 +1200,22 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  BiliUpProfile dco_decode_bili_up_profile(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 6)
+      throw Exception('unexpected arr length: expect 6 but see ${arr.length}');
+    return BiliUpProfile(
+      mid: dco_decode_i_64(arr[0]),
+      name: dco_decode_String(arr[1]),
+      face: dco_decode_String(arr[2]),
+      sign: dco_decode_String(arr[3]),
+      fans: dco_decode_i_64(arr[4]),
+      archiveCount: dco_decode_i_32(arr[5]),
+    );
+  }
+
+  @protected
   BiliUser dco_decode_bili_user(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
@@ -1025,12 +1234,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   bool dco_decode_bool(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as bool;
-  }
-
-  @protected
-  double dco_decode_f_64(dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    return raw as double;
   }
 
   @protected
@@ -1143,11 +1346,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_title = sse_decode_String(deserializer);
     var var_mediaCount = sse_decode_i_32(deserializer);
     var var_coverUrl = sse_decode_String(deserializer);
+    var var_favState = sse_decode_bool(deserializer);
     return BiliFavoriteFolder(
       id: var_id,
       title: var_title,
       mediaCount: var_mediaCount,
       coverUrl: var_coverUrl,
+      favState: var_favState,
     );
   }
 
@@ -1259,6 +1464,25 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  BiliUpProfile sse_decode_bili_up_profile(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_mid = sse_decode_i_64(deserializer);
+    var var_name = sse_decode_String(deserializer);
+    var var_face = sse_decode_String(deserializer);
+    var var_sign = sse_decode_String(deserializer);
+    var var_fans = sse_decode_i_64(deserializer);
+    var var_archiveCount = sse_decode_i_32(deserializer);
+    return BiliUpProfile(
+      mid: var_mid,
+      name: var_name,
+      face: var_face,
+      sign: var_sign,
+      fans: var_fans,
+      archiveCount: var_archiveCount,
+    );
+  }
+
+  @protected
   BiliUser sse_decode_bili_user(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_isLogin = sse_decode_bool(deserializer);
@@ -1279,12 +1503,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   bool sse_decode_bool(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return deserializer.buffer.getUint8() != 0;
-  }
-
-  @protected
-  double sse_decode_f_64(SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    return deserializer.buffer.getFloat64();
   }
 
   @protected
@@ -1418,6 +1636,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_String(self.title, serializer);
     sse_encode_i_32(self.mediaCount, serializer);
     sse_encode_String(self.coverUrl, serializer);
+    sse_encode_bool(self.favState, serializer);
   }
 
   @protected
@@ -1500,6 +1719,20 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_bili_up_profile(
+    BiliUpProfile self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_64(self.mid, serializer);
+    sse_encode_String(self.name, serializer);
+    sse_encode_String(self.face, serializer);
+    sse_encode_String(self.sign, serializer);
+    sse_encode_i_64(self.fans, serializer);
+    sse_encode_i_32(self.archiveCount, serializer);
+  }
+
+  @protected
   void sse_encode_bili_user(BiliUser self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_bool(self.isLogin, serializer);
@@ -1513,12 +1746,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   void sse_encode_bool(bool self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     serializer.buffer.putUint8(self ? 1 : 0);
-  }
-
-  @protected
-  void sse_encode_f_64(double self, SseSerializer serializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    serializer.buffer.putFloat64(self);
   }
 
   @protected

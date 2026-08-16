@@ -16,9 +16,7 @@ Future<void> runDesktopLyricWindow() async {
   await windowManager.ensureInitialized();
   try {
     await acrylic.Window.initialize();
-    await acrylic.Window.setEffect(
-      effect: acrylic.WindowEffect.transparent,
-    );
+    await acrylic.Window.setEffect(effect: acrylic.WindowEffect.transparent);
   } catch (_) {}
   const options = WindowOptions(
     size: Size(920, 148),
@@ -72,8 +70,7 @@ class DesktopLyricApp extends StatefulWidget {
   State<DesktopLyricApp> createState() => _DesktopLyricAppState();
 }
 
-class _DesktopLyricAppState extends State<DesktopLyricApp>
-    with WindowListener {
+class _DesktopLyricAppState extends State<DesktopLyricApp> with WindowListener {
   var _snapshot = const DesktopLyricSnapshot();
   var _passingThrough = false;
   var _hovered = false;
@@ -125,7 +122,7 @@ class _DesktopLyricAppState extends State<DesktopLyricApp>
           await windowManager.show();
           _shownAt = DateTime.now();
           try {
-            await windowManager.setOpacity(1);
+            await windowManager.setOpacity(next.opacity.clamp(0.2, 1.0));
           } catch (_) {}
         } else {
           _shownAt = null;
@@ -140,23 +137,24 @@ class _DesktopLyricAppState extends State<DesktopLyricApp>
   }
 
   Future<void> _syncPassThrough() async {
-    var overLock = false;
+    var overChrome = false;
     var overBar = false;
     try {
       final cursor = await screenRetriever.getCursorScreenPoint();
       final window = await windowManager.getBounds();
-      overLock = _rectOf(_lockKey, window)?.inflate(16).contains(cursor) ?? false;
+      overChrome =
+          _rectOf(_lockKey, window)?.inflate(16).contains(cursor) ?? false;
       overBar = _rectOf(_barKey, window)?.contains(cursor) ?? false;
     } catch (_) {}
     if (mounted && _hovered != overBar) {
       setState(() => _hovered = overBar);
     }
-    final shownLongEnough = _shownAt != null &&
-        DateTime.now().difference(_shownAt!) > const Duration(milliseconds: 240);
-    final ignore = _snapshot.locked &&
-        _snapshot.visible &&
-        shownLongEnough &&
-        !overLock;
+    final shownLongEnough =
+        _shownAt != null &&
+        DateTime.now().difference(_shownAt!) >
+            const Duration(milliseconds: 240);
+    final ignore =
+        _snapshot.locked && _snapshot.visible && shownLongEnough && !overChrome;
     await _setClickThrough(ignore);
   }
 
@@ -216,7 +214,7 @@ class _DesktopLyricAppState extends State<DesktopLyricApp>
         backgroundColor: Colors.transparent,
         body: DesktopLyricBar(
           barKey: _barKey,
-          lockKey: _lockKey,
+          chromeKey: _lockKey,
           snapshot: _snapshot,
           hovered: _hovered,
           onHover: (value) {
@@ -225,6 +223,7 @@ class _DesktopLyricAppState extends State<DesktopLyricApp>
             }
           },
           onLock: () => _up.invokeMethod('toggleLock'),
+          onCycleEffect: () => _up.invokeMethod('cycleEffect'),
         ),
       ),
     );
@@ -235,24 +234,27 @@ class DesktopLyricBar extends StatelessWidget {
   const DesktopLyricBar({
     super.key,
     required this.barKey,
-    required this.lockKey,
+    required this.chromeKey,
     required this.snapshot,
     required this.hovered,
     required this.onHover,
     required this.onLock,
+    required this.onCycleEffect,
   });
 
   final Key barKey;
-  final GlobalKey lockKey;
+  final GlobalKey chromeKey;
   final DesktopLyricSnapshot snapshot;
   final bool hovered;
   final ValueChanged<bool> onHover;
   final VoidCallback onLock;
+  final VoidCallback onCycleEffect;
 
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
     final locked = snapshot.locked;
+    final effect = _effectView(snapshot, tokens);
     final body = Column(
       key: barKey,
       children: [
@@ -263,29 +265,38 @@ class DesktopLyricBar extends StatelessWidget {
             duration: const Duration(milliseconds: 160),
             child: IgnorePointer(
               ignoring: !hovered,
-              child: IconButton(
-                key: lockKey,
-                tooltip: locked ? '解锁桌面歌词（可拖动）' : '锁定桌面歌词（点穿）',
-                visualDensity: VisualDensity.compact,
-                onPressed: onLock,
-                icon: Icon(
-                  locked ? Icons.lock_rounded : Icons.lock_open_rounded,
-                  color: Colors.white,
-                  shadows: const [
-                    Shadow(blurRadius: 8, color: Colors.black87),
-                  ],
-                ),
+              child: Row(
+                key: chromeKey,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  IconButton(
+                    tooltip: locked ? '解锁桌面歌词（可拖动）' : '锁定桌面歌词（点穿）',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: onLock,
+                    icon: Icon(
+                      locked ? Icons.lock_rounded : Icons.lock_open_rounded,
+                      color: Colors.white,
+                      shadows: const [
+                        Shadow(blurRadius: 8, color: Colors.black87),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: '歌词特效：${snapshot.effect.label}',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: onCycleEffect,
+                    icon: const Icon(
+                      Icons.auto_awesome_rounded,
+                      color: Colors.white,
+                      shadows: [Shadow(blurRadius: 8, color: Colors.black87)],
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
         ),
-        Expanded(
-          child: locked
-              ? _LyricReel(snapshot: snapshot, tokens: tokens)
-              : DragToMoveArea(
-                  child: _LyricReel(snapshot: snapshot, tokens: tokens),
-                ),
-        ),
+        Expanded(child: locked ? effect : DragToMoveArea(child: effect)),
       ],
     );
     if (locked) {
@@ -296,6 +307,18 @@ class DesktopLyricBar extends StatelessWidget {
       onExit: (_) => onHover(false),
       child: body,
     );
+  }
+
+  Widget _effectView(DesktopLyricSnapshot snapshot, MeluneTokens tokens) {
+    return switch (snapshot.effect) {
+      DesktopLyricEffect.reel => _LyricReel(snapshot: snapshot, tokens: tokens),
+      DesktopLyricEffect.karaoke => _LyricKaraoke(
+        snapshot: snapshot,
+        tokens: tokens,
+      ),
+      DesktopLyricEffect.glow => _LyricGlow(snapshot: snapshot, tokens: tokens),
+      DesktopLyricEffect.dual => _LyricDual(snapshot: snapshot, tokens: tokens),
+    };
   }
 }
 
@@ -322,17 +345,18 @@ class _LyricReelState extends State<_LyricReel>
   @override
   void initState() {
     super.initState();
-    _previous = _sideOf(widget.snapshot.previous);
-    _current = _heroOf(widget.snapshot);
-    _next = _sideOf(widget.snapshot.next);
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 480),
-    )..addStatusListener((status) {
-        if (status == AnimationStatus.completed) {
-          _commit();
-        }
-      });
+    _previous = _lyricSide(widget.snapshot.previous);
+    _current = _lyricHero(widget.snapshot);
+    _next = _lyricSide(widget.snapshot.next);
+    _controller =
+        AnimationController(
+          vsync: this,
+          duration: const Duration(milliseconds: 480),
+        )..addStatusListener((status) {
+          if (status == AnimationStatus.completed) {
+            _commit();
+          }
+        });
   }
 
   @override
@@ -344,9 +368,9 @@ class _LyricReelState extends State<_LyricReel>
   @override
   void didUpdateWidget(covariant _LyricReel oldWidget) {
     super.didUpdateWidget(oldWidget);
-    final nextCurrent = _heroOf(widget.snapshot);
-    final nextSide = _sideOf(widget.snapshot.next);
-    final prevSide = _sideOf(widget.snapshot.previous);
+    final nextCurrent = _lyricHero(widget.snapshot);
+    final nextSide = _lyricSide(widget.snapshot.next);
+    final prevSide = _lyricSide(widget.snapshot.previous);
     if (nextCurrent == _current &&
         nextSide == _next &&
         prevSide == _previous &&
@@ -381,9 +405,9 @@ class _LyricReelState extends State<_LyricReel>
       return;
     }
     setState(() {
-      _previous = _sideOf(widget.snapshot.previous);
-      _current = _heroOf(widget.snapshot);
-      _next = _sideOf(widget.snapshot.next);
+      _previous = _lyricSide(widget.snapshot.previous);
+      _current = _lyricHero(widget.snapshot);
+      _next = _lyricSide(widget.snapshot.next);
       _incoming = null;
       _direction = 1;
     });
@@ -416,8 +440,8 @@ class _LyricReelState extends State<_LyricReel>
                     height: _slot,
                     child: _LyricLine(
                       text: lines[i],
-                      centerDistance: ((i * _slot + shift + _slot / 2) - _slot * 1.5)
-                          .abs(),
+                      centerDistance:
+                          ((i * _slot + shift + _slot / 2) - _slot * 1.5).abs(),
                       slot: _slot,
                       tokens: widget.tokens,
                     ),
@@ -429,24 +453,24 @@ class _LyricReelState extends State<_LyricReel>
       },
     );
   }
+}
 
-  static String _heroOf(DesktopLyricSnapshot snapshot) {
-    final current = _sideOf(snapshot.current);
-    if (current.isNotEmpty) {
-      return current;
-    }
-    if (snapshot.title.isNotEmpty) {
-      return snapshot.title;
-    }
-    return 'Melune · 洛音';
+String _lyricHero(DesktopLyricSnapshot snapshot) {
+  final current = _lyricSide(snapshot.current);
+  if (current.isNotEmpty) {
+    return current;
   }
+  if (snapshot.title.isNotEmpty) {
+    return snapshot.title;
+  }
+  return 'Melune · 洛音';
+}
 
-  static String _sideOf(String text) {
-    return text
-        .split('\n')
-        .map((line) => line.trim())
-        .firstWhere((line) => line.isNotEmpty, orElse: () => '');
-  }
+String _lyricSide(String text) {
+  return text
+      .split('\n')
+      .map((line) => line.trim())
+      .firstWhere((line) => line.isNotEmpty, orElse: () => '');
 }
 
 class _LyricLine extends StatelessWidget {
@@ -481,12 +505,222 @@ class _LyricLine extends StatelessWidget {
           height: 1.2,
           fontWeight: t < 0.45 ? FontWeight.w800 : FontWeight.w500,
           color: color,
-          shadows: const [
-            Shadow(blurRadius: 10, color: Colors.black87),
-            Shadow(offset: Offset(0, 1), blurRadius: 2, color: Colors.black54),
-          ],
+          shadows: _lyricShadow,
         ),
       ),
     );
   }
+}
+
+const _lyricShadow = [
+  Shadow(blurRadius: 10, color: Colors.black87),
+  Shadow(offset: Offset(0, 1), blurRadius: 2, color: Colors.black54),
+];
+
+class _LyricKaraoke extends StatelessWidget {
+  const _LyricKaraoke({required this.snapshot, required this.tokens});
+
+  final DesktopLyricSnapshot snapshot;
+  final MeluneTokens tokens;
+
+  @override
+  Widget build(BuildContext context) {
+    final current = _lyricHero(snapshot);
+    final progress = snapshot.progress.clamp(0.0, 1.0);
+    final fill = progress.clamp(0.02, 0.98);
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _dimLyric(_lyricSide(snapshot.previous), 13),
+          const SizedBox(height: 4),
+          ShaderMask(
+            blendMode: BlendMode.srcIn,
+            shaderCallback: (bounds) {
+              return LinearGradient(
+                colors: [
+                  tokens.colorBrand,
+                  tokens.colorBrand,
+                  Colors.white.withValues(alpha: 0.42),
+                  Colors.white.withValues(alpha: 0.42),
+                ],
+                stops: [0, fill, fill, 1],
+              ).createShader(bounds);
+            },
+            child: Text(
+              current,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 24,
+                height: 1.2,
+                fontWeight: FontWeight.w800,
+                color: Colors.white,
+                shadows: _lyricShadow,
+              ),
+            ),
+          ),
+          const SizedBox(height: 4),
+          _dimLyric(_lyricSide(snapshot.next), 13),
+        ],
+      ),
+    );
+  }
+}
+
+class _LyricGlow extends StatefulWidget {
+  const _LyricGlow({required this.snapshot, required this.tokens});
+
+  final DesktopLyricSnapshot snapshot;
+  final MeluneTokens tokens;
+
+  @override
+  State<_LyricGlow> createState() => _LyricGlowState();
+}
+
+class _LyricGlowState extends State<_LyricGlow>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _pulse;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulse = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1600),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final current = _lyricHero(widget.snapshot);
+    final tokens = widget.tokens;
+    return AnimatedBuilder(
+      animation: _pulse,
+      builder: (context, _) {
+        final t = Curves.easeInOut.transform(_pulse.value);
+        return Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _dimLyric(_lyricSide(widget.snapshot.previous), 13),
+              Transform.scale(
+                scale: 1 + 0.045 * t,
+                child: Text(
+                  current,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 24,
+                    height: 1.2,
+                    fontWeight: FontWeight.w800,
+                    color: Color.lerp(
+                      tokens.colorBrand,
+                      Colors.white,
+                      0.18 * t,
+                    ),
+                    shadows: [
+                      Shadow(
+                        blurRadius: 10 + 18 * t,
+                        color: tokens.colorBrand.withValues(
+                          alpha: 0.35 + 0.45 * t,
+                        ),
+                      ),
+                      Shadow(
+                        blurRadius: 6 + 10 * t,
+                        color: Colors.white.withValues(alpha: 0.18 * t),
+                      ),
+                      const Shadow(blurRadius: 8, color: Colors.black87),
+                    ],
+                  ),
+                ),
+              ),
+              _dimLyric(_lyricSide(widget.snapshot.next), 13),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _LyricDual extends StatelessWidget {
+  const _LyricDual({required this.snapshot, required this.tokens});
+
+  final DesktopLyricSnapshot snapshot;
+  final MeluneTokens tokens;
+
+  @override
+  Widget build(BuildContext context) {
+    final current = _lyricHero(snapshot);
+    final next = _lyricSide(snapshot.next);
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 360),
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeInCubic,
+            child: Text(
+              current,
+              key: ValueKey(current),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 22,
+                height: 1.2,
+                fontWeight: FontWeight.w800,
+                color: tokens.colorBrand,
+                shadows: _lyricShadow,
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          AnimatedOpacity(
+            duration: const Duration(milliseconds: 280),
+            opacity: next.isEmpty ? 0 : 0.78,
+            child: Text(
+              next,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 15,
+                height: 1.2,
+                fontWeight: FontWeight.w500,
+                color: Color(0xB3FFFFFF),
+                shadows: _lyricShadow,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+Widget _dimLyric(String text, double size) {
+  return Text(
+    text,
+    maxLines: 1,
+    overflow: TextOverflow.ellipsis,
+    textAlign: TextAlign.center,
+    style: TextStyle(
+      fontSize: size,
+      height: 1.2,
+      fontWeight: FontWeight.w500,
+      color: Colors.white.withValues(alpha: 0.48),
+      shadows: _lyricShadow,
+    ),
+  );
 }

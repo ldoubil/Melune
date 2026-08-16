@@ -4,11 +4,7 @@ import 'package:melune/theme/tokens.dart';
 import 'package:melune/widgets/album_card.dart';
 
 class AlbumListPage extends StatelessWidget {
-  const AlbumListPage({
-    super.key,
-    required this.title,
-    required this.albums,
-  });
+  const AlbumListPage({super.key, required this.title, required this.albums});
 
   final String title;
   final List<MeluneAlbum> albums;

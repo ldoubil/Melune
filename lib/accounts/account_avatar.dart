@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:melune/theme/tokens.dart';
+import 'package:melune/widgets/track_cover.dart';
 
 class AccountAvatar extends StatelessWidget {
   const AccountAvatar({
@@ -38,13 +39,11 @@ class AccountAvatar extends StatelessWidget {
     final tokens = context.tokens;
     if (face.isNotEmpty) {
       return ClipOval(
-        child: Image.network(
-          face,
-          width: size,
-          height: size,
-          fit: BoxFit.cover,
-          headers: const {'Referer': 'https://www.bilibili.com'},
-          errorBuilder: (_, _, _) => _Initial(name: name, size: size),
+        child: TrackCover(
+          url: face,
+          size: size,
+          radius: 0,
+          fallback: _Initial(name: name, size: size, tokens: tokens),
         ),
       );
     }

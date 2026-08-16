@@ -19,11 +19,19 @@ class WindowController extends ChangeNotifier {
 
   bool get isMaximized => false;
 
+  bool get hiddenToTray => false;
+
   Future<void> minimize() async {}
 
   Future<void> toggleMaximize() async {}
 
   Future<void> close() async {}
+
+  Future<void> hideToTray() async {}
+
+  Future<void> showFromTray() async {}
+
+  Future<void> quit() async {}
 
   Future<void> startDragging() async {}
 }

@@ -102,13 +102,21 @@ class RustBiliClient implements BiliClient {
   }
 
   @override
+  Future<List<MeluneTrack>> musicZone({int cateId = 0, int page = 1}) async {
+    return (await rust.biliMusicZone(
+      cateId: _i64(cateId),
+      page: page,
+    )).map(_track).toList();
+  }
+
+  @override
   Future<List<MeluneTrack>> musicRecommend() async {
     return (await rust.biliMusicRecommend()).map(_track).toList();
   }
 
   @override
-  Future<List<MeluneFavoriteFolder>> favoriteFolders() async {
-    final folders = await rust.biliFavoriteFolders();
+  Future<List<MeluneFavoriteFolder>> favoriteFolders({int rid = 0}) async {
+    final folders = await rust.biliFavoriteFolders(rid: _i64(rid));
     return folders
         .map(
           (folder) => MeluneFavoriteFolder(
@@ -116,9 +124,37 @@ class RustBiliClient implements BiliClient {
             title: folder.title,
             mediaCount: folder.mediaCount,
             coverUrl: folder.coverUrl,
+            favState: folder.favState,
           ),
         )
         .toList();
+  }
+
+  @override
+  Future<MeluneFavoriteFolder> createFavoriteFolder(String title) async {
+    final folder = await rust.biliCreateFavoriteFolder(title: title);
+    return MeluneFavoriteFolder(
+      id: _toInt(folder.id),
+      title: folder.title.isEmpty ? title : folder.title,
+      mediaCount: folder.mediaCount,
+      coverUrl: folder.coverUrl,
+      favState: folder.favState,
+    );
+  }
+
+  @override
+  Future<void> dealFavorite({
+    required int rid,
+    required String bvid,
+    required List<int> addIds,
+    required List<int> delIds,
+  }) {
+    return rust.biliDealFavorite(
+      rid: _i64(rid),
+      bvid: bvid,
+      addMediaIds: addIds.join(','),
+      delMediaIds: delIds.join(','),
+    );
   }
 
   @override
@@ -157,6 +193,24 @@ class RustBiliClient implements BiliClient {
           ),
         )
         .toList();
+  }
+
+  @override
+  Future<MeluneUpProfile> userCard(int mid) async {
+    final card = await rust.biliUserCard(mid: _i64(mid));
+    return MeluneUpProfile(
+      mid: _toInt(card.mid),
+      name: card.name,
+      face: card.face,
+      sign: card.sign,
+      fans: _toInt(card.fans),
+      archiveCount: card.archiveCount,
+    );
+  }
+
+  @override
+  Future<MeluneSearchPage> userArchives(int mid, {int page = 1}) async {
+    return _search(await rust.biliUserArchives(mid: _i64(mid), page: page));
   }
 
   @override
