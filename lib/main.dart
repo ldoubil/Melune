@@ -8,6 +8,7 @@ import 'package:melune/app.dart';
 import 'package:melune/bili/cookie_dir.dart';
 import 'package:melune/bili/rust_bili_client.dart';
 import 'package:melune/player/media_handler.dart';
+import 'package:melune/player/playback_store.dart';
 import 'package:melune/player/windows_taskbar_media.dart'
     if (dart.library.html) 'package:melune/player/windows_taskbar_media_stub.dart';
 import 'package:melune/player/equalizer.dart';
