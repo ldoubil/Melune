@@ -7,19 +7,23 @@ import 'package:path_provider/path_provider.dart';
 /// 永远不要落到临时目录：系统会清缓存，登录态就会时有时无。
 Future<String> resolveBiliCookieDir() async {
   final candidates = <Directory>[];
+  Future<void> add(Future<Directory> Function() locate) async {
+    try {
+      candidates.add(
+        Directory(
+          '${(await locate()).path}${Platform.pathSeparator}bili',
+        ),
+      );
+    } catch (_) {}
+  }
+
+  await add(getApplicationSupportDirectory);
+  await add(getApplicationDocumentsDirectory);
   try {
-    candidates.add(
-      Directory(
-        '${(await getApplicationSupportDirectory()).path}${Platform.pathSeparator}bili',
-      ),
-    );
-  } catch (_) {}
-  try {
-    candidates.add(
-      Directory(
-        '${(await getApplicationDocumentsDirectory()).path}${Platform.pathSeparator}bili',
-      ),
-    );
+    final files = await getApplicationSupportDirectory();
+    if (candidates.every((dir) => dir.path != files.path)) {
+      candidates.add(files);
+    }
   } catch (_) {}
 
   final errors = <String>[];
@@ -27,10 +31,10 @@ Future<String> resolveBiliCookieDir() async {
   Directory? withCookies;
   for (final dir in candidates) {
     try {
-      await dir.create(recursive: true);
-      final probe = File('${dir.path}${Platform.pathSeparator}.write_test');
-      await probe.writeAsString('ok', flush: true);
-      await probe.delete();
+      if (!await probeCookieDirWritable(dir)) {
+        errors.add('${dir.path}: 无法写入');
+        continue;
+      }
       writable ??= dir;
       final cookies = File('${dir.path}${Platform.pathSeparator}cookies.json');
       if (await cookies.exists() && await cookies.length() > 2) {
@@ -73,6 +77,24 @@ Future<String> resolveBiliCookieDir() async {
   return chosen.path;
 }
 
+Future<bool> probeCookieDirWritable(Directory dir) async {
+  await dir.create(recursive: true);
+  if (!await dir.exists()) {
+    return false;
+  }
+  final probe = File(
+    '${dir.path}${Platform.pathSeparator}cookie_write_test',
+  );
+  await probe.writeAsString('ok', flush: true);
+  final wrote = await probe.exists();
+  try {
+    if (await probe.exists()) {
+      await probe.delete();
+    }
+  } catch (_) {}
+  return wrote;
+}
+
 Future<void> _copyIfMissing(Directory from, Directory to, String name) async {
   final source = File('${from.path}${Platform.pathSeparator}$name');
   if (!await source.exists()) {
@@ -82,5 +104,6 @@ Future<void> _copyIfMissing(Directory from, Directory to, String name) async {
   if (await target.exists() && await target.length() > 2) {
     return;
   }
+  await to.create(recursive: true);
   await source.copy(target.path);
 }

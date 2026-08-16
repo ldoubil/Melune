@@ -141,23 +141,104 @@ extension MeluneTokensX on BuildContext {
 }
 
 ThemeData buildMeluneTheme(MeluneTokens tokens, Brightness brightness) {
+  final scheme = ColorScheme(
+    brightness: brightness,
+    primary: tokens.colorBrand,
+    onPrimary: tokens.colorOnBrand,
+    secondary: tokens.colorBrand,
+    onSecondary: tokens.colorOnBrand,
+    error: const Color(0xFFD93E5D),
+    onError: Colors.white,
+    surface: tokens.colorBg,
+    onSurface: tokens.colorContrast,
+    onSurfaceVariant: tokens.colorBase,
+    outline: tokens.colorSecondary,
+    outlineVariant: tokens.colorDivider,
+    surfaceContainerLowest: tokens.colorBg,
+    surfaceContainerLow: tokens.colorRaisedBg,
+    surfaceContainer: tokens.colorRaisedBg,
+    surfaceContainerHigh: tokens.colorSuperRaisedBg,
+    surfaceContainerHighest: tokens.colorSuperRaisedBg,
+  );
+  final radius = BorderRadius.circular(16);
   return ThemeData(
     useMaterial3: true,
     brightness: brightness,
+    colorScheme: scheme,
     scaffoldBackgroundColor: tokens.colorBg,
-    colorScheme: ColorScheme(
-      brightness: brightness,
-      primary: tokens.colorBrand,
-      onPrimary: tokens.colorOnBrand,
-      secondary: tokens.colorBrand,
-      onSecondary: tokens.colorOnBrand,
-      error: const Color(0xFFD93E5D),
-      onError: Colors.white,
-      surface: tokens.colorBg,
-      onSurface: tokens.colorContrast,
-      onSurfaceVariant: tokens.colorBase,
-      outline: tokens.colorSecondary,
-      outlineVariant: tokens.colorDivider,
+    cardTheme: CardThemeData(
+      color: tokens.colorRaisedBg,
+      elevation: 0,
+      margin: EdgeInsets.zero,
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(borderRadius: radius),
+    ),
+    dividerTheme: DividerThemeData(
+      color: tokens.colorDivider,
+      thickness: 1,
+      space: 1,
+    ),
+    listTileTheme: ListTileThemeData(
+      iconColor: tokens.colorBrand,
+      textColor: tokens.colorContrast,
+      subtitleTextStyle: TextStyle(color: tokens.colorBase, fontSize: 13),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+    ),
+    switchTheme: SwitchThemeData(
+      thumbColor: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.selected)) {
+          return tokens.colorOnBrand;
+        }
+        return tokens.colorSecondary;
+      }),
+      trackColor: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.selected)) {
+          return tokens.colorBrand;
+        }
+        return tokens.colorButtonBg;
+      }),
+    ),
+    sliderTheme: SliderThemeData(
+      activeTrackColor: tokens.colorBrand,
+      thumbColor: tokens.colorBrand,
+      inactiveTrackColor: tokens.colorDivider,
+    ),
+    inputDecorationTheme: InputDecorationTheme(
+      filled: true,
+      fillColor: tokens.colorSuperRaisedBg,
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: tokens.colorDivider),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: tokens.colorBrand, width: 2),
+      ),
+    ),
+    segmentedButtonTheme: SegmentedButtonThemeData(
+      style: ButtonStyle(
+        visualDensity: VisualDensity.compact,
+        foregroundColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return tokens.colorOnBrand;
+          }
+          return tokens.colorContrast;
+        }),
+        backgroundColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return tokens.colorBrand;
+          }
+          return tokens.colorSuperRaisedBg;
+        }),
+      ),
+    ),
+    chipTheme: ChipThemeData(
+      selectedColor: tokens.colorButtonBgSelected,
+      backgroundColor: tokens.colorButtonBg,
+      labelStyle: TextStyle(color: tokens.colorContrast),
+      side: BorderSide(color: tokens.colorDivider),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
     ),
     extensions: [tokens],
   );
