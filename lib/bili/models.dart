@@ -178,7 +178,9 @@ class MeluneFavoriteFolder {
 
   bool get isMelune => isMeluneFavTitle(title);
 
-  bool get isDefault => title == kMeluneDefaultFavTitle;
+  bool get isDefault =>
+      title.trim() == kMeluneDefaultFavTitle ||
+      displayTitle == kMeluneDefaultFavName;
 
   String get displayTitle => meluneFavDisplayTitle(title);
 

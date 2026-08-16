@@ -506,6 +506,50 @@ impl Session {
     }
 
     pub fn favorite_folders(&mut self, mid: i64, rid: i64) -> Result<Value, String> {
+        let mut list = self.created_folder_pages(mid)?;
+        if list.is_empty() {
+            list = json_array_list(&self.created_folder_list_all(mid, 0)?);
+        }
+        if rid > 0 {
+            let flagged = json_array_list(&self.created_folder_list_all(mid, rid)?);
+            let fav_ids = flagged
+                .iter()
+                .filter(|item| {
+                    item["fav_state"].as_bool().unwrap_or(false)
+                        || item["fav_state"].as_i64().unwrap_or(0) > 0
+                })
+                .filter_map(|item| item["id"].as_i64().or_else(|| item["fid"].as_i64()))
+                .collect::<std::collections::HashSet<_>>();
+            for item in &mut list {
+                if let Some(id) = item["id"].as_i64().or_else(|| item["fid"].as_i64()) {
+                    if let Some(obj) = item.as_object_mut() {
+                        obj.insert("fav_state".into(), json!(fav_ids.contains(&id)));
+                    }
+                }
+            }
+        }
+        Ok(json!({ "list": list }))
+    }
+
+    fn created_folder_pages(&mut self, mid: i64) -> Result<Vec<Value>, String> {
+        let mut out = Vec::new();
+        for pn in 1..=12 {
+            let path =
+                format!("/x/v3/fav/folder/created/list?pn={pn}&ps=50&up_mid={mid}");
+            let body = self.get_json(&path, REFERER)?;
+            let data = self.require_data(body, "/x/v3/fav/folder/created/list")?;
+            let page = json_array_list(&data);
+            let count = out.len();
+            out.extend(page);
+            let has_more = data["has_more"].as_bool().unwrap_or(false);
+            if !has_more || out.len() == count {
+                break;
+            }
+        }
+        Ok(out)
+    }
+
+    fn created_folder_list_all(&mut self, mid: i64, rid: i64) -> Result<Value, String> {
         let mut path = format!("/x/v3/fav/folder/created/list-all?up_mid={mid}");
         if rid > 0 {
             path.push_str(&format!("&type=2&rid={rid}"));
@@ -639,6 +683,13 @@ fn should_cache_url(url: &str) -> bool {
         && !url.contains("playurl")
         && !url.contains("qrcode")
         && !url.contains("/x/v3/fav")
+}
+
+fn json_array_list(data: &Value) -> Vec<Value> {
+    if let Some(list) = data.as_array() {
+        return list.clone();
+    }
+    data["list"].as_array().cloned().unwrap_or_default()
 }
 
 fn json_cache_key(url: &str) -> String {

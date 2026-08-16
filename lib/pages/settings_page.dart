@@ -216,7 +216,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   subtitle: Text(
                     MeluneEqualizer.isDesktop
                         ? '通过播放器音频滤镜调节 10 段增益'
-                        : '在支持的系统上按频段调节增益',
+                        : '10 段参数会保存；Android 暂不接入系统 Equalizer，以免首次播放失败',
                   ),
                   value: settings.eqEnabled,
                   onChanged: (value) {

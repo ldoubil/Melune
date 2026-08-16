@@ -36,7 +36,14 @@ class _TrackCoverState extends State<TrackCover> {
   @override
   void initState() {
     super.initState();
+    CoverCache.instance.addListener(_onCache);
     _sync();
+  }
+
+  @override
+  void dispose() {
+    CoverCache.instance.removeListener(_onCache);
+    super.dispose();
   }
 
   @override
@@ -45,6 +52,28 @@ class _TrackCoverState extends State<TrackCover> {
     if (oldWidget.url != widget.url) {
       _sync(rebuild: true);
     }
+  }
+
+  void _onCache() {
+    if (!mounted) {
+      return;
+    }
+    final hit = CoverCache.instance.existing(widget.url);
+    if (hit == null) {
+      if (widget.url.isEmpty || _loading) {
+        return;
+      }
+      _sync(rebuild: true);
+      return;
+    }
+    if (_file?.path == hit.path && !_loading && !_failed) {
+      return;
+    }
+    setState(() {
+      _file = hit;
+      _loading = false;
+      _failed = false;
+    });
   }
 
   void _sync({bool rebuild = false}) {

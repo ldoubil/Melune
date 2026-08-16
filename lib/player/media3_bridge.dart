@@ -1,11 +1,9 @@
 import 'dart:async';
-import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:melune/player/cover_cache.dart';
 import 'package:melune/player/media_handler.dart';
-import 'package:path_provider/path_provider.dart';
 
 /// Android Media3 会话门面：只在 [MediaSessionHost.sessionEpoch] 变化时推一次状态，
 /// 进度条交给系统按 1.0x 外推，不再每秒刷 PlaybackState。
@@ -57,7 +55,7 @@ class Media3NowPlayingBridge implements NowPlayingBridge {
     if (!coverChanged || cover.isEmpty) {
       return;
     }
-    final path = await _cacheCover(cover, track?.id ?? 'cover');
+    final path = await _cacheCover(cover);
     if (_coverUrl != cover) {
       return;
     }
@@ -100,40 +98,13 @@ class Media3NowPlayingBridge implements NowPlayingBridge {
     };
   }
 
-  Future<String?> _cacheCover(String url, String id) async {
+  Future<String?> _cacheCover(String url) async {
     if (url.isEmpty) {
       return null;
     }
     try {
-      final uri = Uri.tryParse(url);
-      if (uri == null) {
-        return null;
-      }
-      final client = HttpClient();
-      final request = await client.getUrl(uri);
-      request.headers.set('Referer', 'https://www.bilibili.com');
-      request.headers.set(
-        'User-Agent',
-        'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/125.0.0.0 Mobile Safari/537.36',
-      );
-      final response = await request.close();
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        client.close(force: true);
-        return null;
-      }
-      final builder = BytesBuilder(copy: false);
-      await for (final chunk in response) {
-        builder.add(chunk);
-      }
-      client.close();
-      final dir = Directory(
-        '${(await getTemporaryDirectory()).path}/media_art',
-      );
-      await dir.create(recursive: true);
-      final safeId = id.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
-      final file = File('${dir.path}/$safeId.jpg');
-      await file.writeAsBytes(builder.takeBytes(), flush: true);
-      return file.path;
+      final file = await CoverCache.instance.ensure(url);
+      return file?.path;
     } catch (_) {
       return null;
     }

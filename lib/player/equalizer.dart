@@ -71,7 +71,9 @@ class MeluneEqualizer {
   static Future<void> applyFromSettings({AndroidEqualizer? android}) async {
     final settings = AppSettings.instance;
     final filter = mpvFilter(enabled: settings.eqEnabled, gains: settings.eqGains);
-    JustAudioMediaKit.applyAudioFilter(filter);
+    try {
+      JustAudioMediaKit.applyAudioFilter(filter);
+    } catch (_) {}
     if (android == null) {
       return;
     }
@@ -88,7 +90,9 @@ class MeluneEqualizer {
         );
         await bands[i].setGain(nearest.clamp(min, max));
       }
-    } catch (_) {}
+    } catch (err) {
+      debugPrint('Android 均衡器会话尚未就绪: $err');
+    }
   }
 
   static bool get isDesktop {

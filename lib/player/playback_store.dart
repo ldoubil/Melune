@@ -43,6 +43,7 @@ class PlaybackStore extends ChangeNotifier implements MediaSessionHost {
   PlaybackStore({required this.bili, this.media, this.windows, this.persistDir})
     : favorites = FavoriteLibrary(bili: bili),
       offline = OfflineCache(bili: bili, persistDir: persistDir) {
+    CoverCache.instance.attach(persistDir);
     media?.attach(this);
     windows?.attach(this);
     attachDesktopLyricHost(
@@ -51,7 +52,6 @@ class PlaybackStore extends ChangeNotifier implements MediaSessionHost {
       onToggleLock: toggleDesktopLyricLock,
       onCycleEffect: cycleDesktopLyricEffect,
     );
-    CoverCache.instance.attach(persistDir);
     if ((persistDir ?? '').isNotEmpty) {
       _lifecycle = _PlaybackLifecycle(this)..attach();
     }
@@ -101,7 +101,6 @@ class PlaybackStore extends ChangeNotifier implements MediaSessionHost {
   String _sessionSig = '';
   var _ducked = false;
   var _pausedForFocus = false;
-  AndroidEqualizer? _androidEq;
   final _random = Random();
   Timer? _persistTimer;
   _PlaybackLifecycle? _lifecycle;
@@ -787,7 +786,7 @@ class PlaybackStore extends ChangeNotifier implements MediaSessionHost {
       if (gen != _startGen) {
         return;
       }
-      _error = err.toString().replaceFirst('Exception: ', '');
+      _error = _friendlyStartError(err);
       _playing = false;
       _wantPlaying = false;
     } finally {
@@ -796,6 +795,14 @@ class PlaybackStore extends ChangeNotifier implements MediaSessionHost {
         notifyListeners();
       }
     }
+  }
+
+  String _friendlyStartError(Object err) {
+    final raw = err.toString().replaceFirst('Exception: ', '');
+    if (raw.contains('getNumberOfBands') || raw.contains('AndroidEqualizer')) {
+      return '播放器初始化失败，请再点一次播放';
+    }
+    return raw;
   }
 
   Future<void> _loadLyrics(MeluneTrack current) async {
@@ -891,7 +898,11 @@ class PlaybackStore extends ChangeNotifier implements MediaSessionHost {
 
   Future<void> applyOutputSettings() async {
     await _applySkipSilence();
-    await MeluneEqualizer.applyFromSettings(android: _androidEq);
+    try {
+      await MeluneEqualizer.applyFromSettings();
+    } catch (err) {
+      debugPrint('均衡器应用失败: $err');
+    }
     _pushDesktopLyric(force: true);
     notifyListeners();
   }
@@ -902,20 +913,17 @@ class PlaybackStore extends ChangeNotifier implements MediaSessionHost {
       return existing;
     }
     await _bindAudioFocus();
-    AudioPipeline? pipeline;
-    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
-      _androidEq = AndroidEqualizer();
-      pipeline = AudioPipeline(androidAudioEffects: [_androidEq!]);
-    }
+    // Android 的 AndroidEqualizer 必须等 audio session 就绪后才能读频段。
+    // 一创建就塞进 AudioPipeline 会在首次 setUrl 时触发
+    // Equalizer.getNumberOfBands() NPE，把整段播放标成失败。
     final player = AudioPlayer(
       handleInterruptions: false,
       useProxyForRequestHeaders: false,
-      audioPipeline: pipeline,
     );
     _player = player;
     await _applyOutputVolume();
     await _applySkipSilence();
-    unawaited(MeluneEqualizer.applyFromSettings(android: _androidEq));
+    unawaited(MeluneEqualizer.applyFromSettings());
     _positionSub = player.positionStream.listen((value) {
       if (_loading && value > Duration.zero) {
         _loading = false;

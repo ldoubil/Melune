@@ -3,14 +3,15 @@ const kMeluneDefaultFavName = '默认收藏';
 const kMeluneDefaultFavTitle = '$kMeluneFavPrefix$kMeluneDefaultFavName';
 
 bool isMeluneFavTitle(String title) {
-  return title.startsWith(kMeluneFavPrefix);
+  return title.trim().startsWith(kMeluneFavPrefix);
 }
 
 String meluneFavDisplayTitle(String title) {
-  if (title.startsWith(kMeluneFavPrefix)) {
-    return title.substring(kMeluneFavPrefix.length);
+  final trimmed = title.trim();
+  if (trimmed.startsWith(kMeluneFavPrefix)) {
+    return trimmed.substring(kMeluneFavPrefix.length);
   }
-  return title;
+  return trimmed;
 }
 
 String meluneFavStorageTitle(String name) {

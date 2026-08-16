@@ -4,5 +4,9 @@
         <domain includeSubdomains="false">127.0.0.1</domain>
         <domain includeSubdomains="false">localhost</domain>
         <domain includeSubdomains="false">::1</domain>
+        <domain includeSubdomains="true">hdslb.com</domain>
+        <domain includeSubdomains="true">biliimg.com</domain>
+        <domain includeSubdomains="true">bilibili.com</domain>
+        <domain includeSubdomains="true">akamaized.net</domain>
     </domain-config>
 </network-security-config>

@@ -542,10 +542,7 @@ pub fn bili_favorite_folders(rid: i64) -> Result<Vec<BiliFavoriteFolder>, String
             return Ok(vec![]);
         }
         let data = state.session.favorite_folders(mid, rid.max(0))?;
-        Ok(data["list"]
-            .as_array()
-            .cloned()
-            .unwrap_or_default()
+        Ok(json_list(&data)
             .into_iter()
             .filter_map(map_favorite_folder)
             .collect())
@@ -1042,13 +1039,13 @@ fn map_music_center(item: Value) -> Option<BiliTrack> {
 }
 
 fn map_favorite_folder(item: Value) -> Option<BiliFavoriteFolder> {
-    let id = as_i64(&item["id"]);
+    let id = first_i64(&[&item["id"], &item["media_id"], &item["fid"]]);
     if id <= 0 {
         return None;
     }
     Some(BiliFavoriteFolder {
         id,
-        title: json_str(&item["title"]),
+        title: json_str(&item["title"]).trim().to_string(),
         media_count: as_i64(&item["media_count"]) as i32,
         cover_url: https_url(&json_str(&item["cover"])),
         fav_state: item["fav_state"].as_bool().unwrap_or(false) || as_i64(&item["fav_state"]) > 0,

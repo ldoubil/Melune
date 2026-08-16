@@ -12,6 +12,7 @@ class FavoriteLibrary extends ChangeNotifier {
   List<MeluneFavoriteFolder> folders = const [];
 
   var _listLoaded = false;
+  var _loadGen = 0;
   var _hydrateGen = 0;
   Future<List<MeluneFavoriteFolder>>? _inflight;
 
@@ -25,8 +26,10 @@ class FavoriteLibrary extends ChangeNotifier {
   }
 
   void clear() {
+    _loadGen += 1;
     _hydrateGen += 1;
     _listLoaded = false;
+    _inflight = null;
     folders = const [];
     notifyListeners();
   }
@@ -35,23 +38,51 @@ class FavoriteLibrary extends ChangeNotifier {
     if (!force && _listLoaded && folders.isNotEmpty) {
       return Future.value(folders);
     }
-    if (force) {
-      _listLoaded = false;
-      _inflight = null;
+    if (!force) {
+      final inflight = _inflight;
+      if (inflight != null) {
+        return inflight;
+      }
     }
-    return _inflight ??= _load(
-      force: force,
-    ).whenComplete(() => _inflight = null);
+    final future = _load(force: force);
+    _inflight = future;
+    return future.whenComplete(() {
+      if (identical(_inflight, future)) {
+        _inflight = null;
+      }
+    });
   }
 
   Future<List<MeluneFavoriteFolder>> _load({bool force = false}) async {
+    final gen = ++_loadGen;
+    final previous = List<MeluneFavoriteFolder>.from(folders);
     final all = await bili.favoriteFolders();
+    if (gen != _loadGen) {
+      return folders;
+    }
+    if (all.isEmpty && previous.isNotEmpty) {
+      _listLoaded = true;
+      unawaited(_hydrate(force: force));
+      return previous;
+    }
     var ours = all.where((folder) => folder.isMelune).toList();
     if (ours.every((folder) => !folder.isDefault)) {
       try {
         final created = await bili.createFavoriteFolder(kMeluneDefaultFavTitle);
+        if (gen != _loadGen) {
+          return folders;
+        }
         ours = [created.copyWith(favState: false), ...ours];
-      } catch (_) {}
+      } catch (_) {
+        ours = [
+          ...previous.where((folder) => folder.isDefault),
+          ...ours,
+        ];
+      }
+    }
+    ours = _unionKnown(ours, previous);
+    if (gen != _loadGen) {
+      return folders;
     }
     folders = _merge(ours);
     _listLoaded = true;
@@ -206,9 +237,23 @@ class FavoriteLibrary extends ChangeNotifier {
     }
   }
 
+  List<MeluneFavoriteFolder> _unionKnown(
+    List<MeluneFavoriteFolder> remote,
+    List<MeluneFavoriteFolder> local,
+  ) {
+    final ids = {for (final folder in remote) folder.id};
+    final titles = {for (final folder in remote) folder.title.trim()};
+    return [
+      ...remote,
+      for (final folder in local)
+        if (!ids.contains(folder.id) && !titles.contains(folder.title.trim()))
+          folder,
+    ];
+  }
+
   List<MeluneFavoriteFolder> _merge(List<MeluneFavoriteFolder> next) {
     final prev = {for (final folder in folders) folder.id: folder};
-    return [
+    final merged = [
       for (final folder in next)
         folder.copyWith(
           mediaCount: folder.mediaCount > 0
@@ -218,6 +263,10 @@ class FavoriteLibrary extends ChangeNotifier {
               ? folder.coverUrl
               : (prev[folder.id]?.coverUrl ?? ''),
         ),
+    ];
+    return [
+      ...merged.where((folder) => folder.isDefault),
+      ...merged.where((folder) => !folder.isDefault),
     ];
   }
 }
