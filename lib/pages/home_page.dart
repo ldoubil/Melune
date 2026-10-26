@@ -1,6 +1,7 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:melune/bili/bili_scope.dart';
+import 'package:melune/bili/error_message.dart';
 import 'package:melune/bili/models.dart';
 import 'package:melune/theme/tokens.dart';
 import 'package:melune/widgets/browse_scope.dart';
@@ -56,7 +57,7 @@ class _HomePageState extends State<HomePage> {
       }
       setState(() {
         _loading = false;
-        _error = err.toString();
+        _error = friendlyErrorMessage(err);
       });
     }
   }

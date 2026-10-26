@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:melune/accounts/account_store.dart';
+import 'package:melune/bili/error_message.dart';
 import 'package:melune/player/playback_select.dart';
 import 'package:melune/player/playback_store.dart';
 import 'package:melune/theme/tokens.dart';
@@ -70,7 +71,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
       }
       setState(() {
         _loading = false;
-        _error = err.toString();
+        _error = friendlyErrorMessage(err);
       });
     }
   }

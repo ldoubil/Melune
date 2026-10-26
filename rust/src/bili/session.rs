@@ -106,6 +106,32 @@ impl Session {
         form: Option<&[(&str, &str)]>,
         redirects: u32,
     ) -> Result<Response, String> {
+        // 只有 GET 是幂等的：TLS 抖动（如 bad_record_mac）或连接被重置时，
+        // 重新建连通常即可恢复。POST 可能已在服务端生效，重试会重复收藏/建夹。
+        let attempts = if method == "GET" { 3 } else { 1 };
+        let mut attempt = 0;
+        loop {
+            attempt += 1;
+            match self.request_once(method, url, referer, form, redirects) {
+                Ok(resp) => return Ok(resp),
+                Err(err) => {
+                    if attempt >= attempts || !is_transient(&err) {
+                        return Err(map_ureq(err));
+                    }
+                    std::thread::sleep(Duration::from_millis(250 * attempt as u64));
+                }
+            }
+        }
+    }
+
+    fn request_once(
+        &mut self,
+        method: &str,
+        url: &str,
+        referer: &str,
+        form: Option<&[(&str, &str)]>,
+        redirects: u32,
+    ) -> Result<Response, ureq::Error> {
         let agent = super::outbound::apply(
             ureq::AgentBuilder::new()
                 .timeout(Duration::from_secs(25))
@@ -127,9 +153,9 @@ impl Session {
             req = req.set("Cookie", &cookie);
         }
         let resp = if let Some(form) = form {
-            req.send_form(form).map_err(map_ureq)?
+            req.send_form(form)?
         } else {
-            req.call().map_err(map_ureq)?
+            req.call()?
         };
         self.absorb_cookies(&resp);
         let _ = self.persist();
@@ -755,6 +781,20 @@ fn parse_set_cookie(header: &str) -> Option<(String, String)> {
         return None;
     }
     Some((name.to_string(), value.trim().to_string()))
+}
+
+/// 连接层面的瞬时错误才值得重试；HTTP 状态码与接口参数错误重试没有意义。
+fn is_transient(err: &ureq::Error) -> bool {
+    let ureq::Error::Transport(transport) = err else {
+        return false;
+    };
+    matches!(
+        transport.kind(),
+        ureq::ErrorKind::Io
+            | ureq::ErrorKind::ConnectionFailed
+            | ureq::ErrorKind::Dns
+            | ureq::ErrorKind::ProxyConnect
+    )
 }
 
 fn map_ureq(err: ureq::Error) -> String {

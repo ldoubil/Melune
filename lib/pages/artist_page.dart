@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:melune/accounts/account_avatar.dart';
 import 'package:melune/bili/bili_scope.dart';
+import 'package:melune/bili/error_message.dart';
 import 'package:melune/bili/models.dart';
 import 'package:melune/theme/tokens.dart';
 import 'package:melune/widgets/album_card.dart';
@@ -55,7 +56,7 @@ class _ArtistPageState extends State<ArtistPage> {
       }
       setState(() {
         _loading = false;
-        _error = err.toString();
+        _error = friendlyErrorMessage(err);
       });
     }
   }
@@ -101,7 +102,7 @@ class _ArtistPageState extends State<ArtistPage> {
       setState(() {
         _loading = false;
         _loadingMore = false;
-        _error ??= err.toString();
+        _error ??= friendlyErrorMessage(err);
       });
     }
   }

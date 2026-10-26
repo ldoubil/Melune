@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:melune/bili/bili_client.dart';
 import 'package:melune/bili/bili_scope.dart';
+import 'package:melune/bili/error_message.dart';
 import 'package:melune/bili/models.dart';
 import 'package:melune/player/playback_store.dart';
 import 'package:melune/theme/tokens.dart';
@@ -40,8 +41,11 @@ class _AlbumPageState extends State<AlbumPage> {
     });
     try {
       var tracks = _album.tracks;
+      String? loadError;
       if (_album.folderId > 0) {
-        tracks = await _loadFolder(bili, _album.folderId);
+        final loaded = await _loadFolder(bili, _album.folderId);
+        tracks = loaded.tracks;
+        loadError = loaded.error;
       } else if (_album.id == 'recent') {
         tracks = _album.tracks;
       } else if (_album.seasonId > 0 && _album.upMid > 0) {
@@ -64,8 +68,9 @@ class _AlbumPageState extends State<AlbumPage> {
       setState(() {
         _album = _album.copyWith(tracks: tracks);
         _loading = false;
+        _error = loadError;
       });
-      if (_album.folderId > 0) {
+      if (_album.folderId > 0 && loadError == null) {
         PlaybackScope.read(context).favorites.patch(
           _album.folderId,
           mediaCount: tracks.length,
@@ -78,21 +83,48 @@ class _AlbumPageState extends State<AlbumPage> {
       }
       setState(() {
         _loading = false;
-        _error = err.toString();
+        _error = friendlyErrorMessage(err);
       });
     }
   }
 
-  Future<List<MeluneTrack>> _loadFolder(BiliClient bili, int folderId) async {
+  Future<_FolderLoad> _loadFolder(BiliClient bili, int folderId) async {
     final items = <MeluneTrack>[];
     for (var page = 1; page <= 8; page++) {
-      final result = await bili.favoriteTracks(folderId, page: page);
+      final result = await _loadFolderPage(bili, folderId, page);
+      if (result == null) {
+        return _FolderLoad(
+          items,
+          error: items.isEmpty
+              ? '歌单加载失败，请检查网络后重试'
+              : '网络波动，部分曲目未能加载',
+        );
+      }
       items.addAll(result.items);
       if (result.items.isEmpty || page >= result.totalPages) {
         break;
       }
     }
-    return items;
+    return _FolderLoad(items);
+  }
+
+  /// 单页失败先重试一次；仍失败时返回 null，由调用方保留已拿到的曲目。
+  Future<MeluneSearchPage?> _loadFolderPage(
+    BiliClient bili,
+    int folderId,
+    int page,
+  ) async {
+    for (var attempt = 0; attempt < 2; attempt++) {
+      try {
+        return await bili.favoriteTracks(folderId, page: page);
+      } catch (_) {
+        if (attempt > 0) {
+          return null;
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 300));
+      }
+    }
+    return null;
   }
 
   void _play({int start = 0}) {
@@ -182,12 +214,26 @@ class _AlbumPageState extends State<AlbumPage> {
                   ),
                 if (_error != null) ...[
                   const SizedBox(height: 16),
-                  Text(_error!, style: TextStyle(color: tokens.colorSecondary)),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          _error!,
+                          style: TextStyle(color: tokens.colorSecondary),
+                        ),
+                      ),
+                      TextButton(
+                        key: const Key('album-retry'),
+                        onPressed: _loading ? null : _hydrate,
+                        child: const Text('重试'),
+                      ),
+                    ],
+                  ),
                 ],
                 const SizedBox(height: 22),
                 if (_loading)
                   for (var i = 0; i < 8; i++) const TrackTileSkeleton()
-                else if (tracks.isEmpty)
+                else if (tracks.isEmpty && _error == null)
                   Text('这个歌单还没有曲目', style: TextStyle(color: tokens.colorBase))
                 else
                   for (var i = 0; i < tracks.length; i++)
@@ -300,6 +346,13 @@ class _Header extends StatelessWidget {
       ],
     );
   }
+}
+
+class _FolderLoad {
+  const _FolderLoad(this.tracks, {this.error});
+
+  final List<MeluneTrack> tracks;
+  final String? error;
 }
 
 bool _isSongCount(String text) => RegExp(r'^\d+ 首$').hasMatch(text);

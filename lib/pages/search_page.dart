@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:melune/bili/bili_scope.dart';
+import 'package:melune/bili/error_message.dart';
 import 'package:melune/bili/models.dart';
 import 'package:melune/player/playback_store.dart';
 import 'package:melune/theme/tokens.dart';
@@ -124,7 +125,7 @@ class _SearchPageState extends State<SearchPage> {
         return;
       }
       setState(() {
-        _error = err.toString();
+        _error = friendlyErrorMessage(err);
         if (_items.isEmpty) {
           _hasMore = false;
         }
